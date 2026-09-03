@@ -234,6 +234,17 @@ input,select{font-family:inherit;}
 .pos-tile.oos{opacity:.42;pointer-events:none;}
 .pos-tile::after{content:'';position:absolute;inset:0;border-radius:16px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.14);pointer-events:none;}
 .pos-empty{padding:60px 20px;text-align:center;color:var(--muted);font-size:13.5px;}
+.journal-wrap{margin-top:18px;background:var(--surface);border-radius:12px;overflow:hidden;box-shadow:0 4px 14px rgba(0,0,0,.08);}
+.journal-title{font-family:var(--sans);font-size:13.5px;font-weight:700;color:var(--text-strong);padding:12px 16px;border-bottom:1px solid var(--line);}
+.journal-table{width:100%;border-collapse:collapse;font-size:12px;}
+.journal-table thead th{background:var(--gold);color:#fff;text-align:left;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;padding:9px 12px;}
+.journal-table tbody td{padding:8px 12px;border-bottom:1px solid var(--paper-2);color:var(--ink);}
+.journal-table tbody tr:hover{background:var(--paper-2);}
+.journal-table tr.jr-date td{background:var(--navy);color:#fff;font-weight:700;padding:8px 12px;font-size:12px;}
+.journal-table td.num{font-family:var(--mono);text-align:right;}
+.journal-table tr.jr-empty td{text-align:center;color:var(--muted);padding:22px 12px;font-style:italic;}
+.journal-table tfoot tr.jr-total td{background:var(--navy);color:#fff;font-weight:700;padding:9px 12px;font-size:12.5px;}
+.journal-table tfoot tr.jr-total td.num{font-family:var(--mono);text-align:right;color:var(--gold);font-size:14px;}
 
 .pos-cart{
   width:340px;flex-shrink:0;background:var(--surface);border-left:1px solid var(--line);
@@ -350,6 +361,32 @@ input,select{font-family:inherit;}
 .card{background:var(--surface);border:1px solid var(--line-admin);border-radius:10px;padding:16px 18px;}
 h2.sec{font-family:var(--sans);font-size:14.5px;font-weight:700;color:var(--odoo);margin:22px 0 10px;display:flex;align-items:center;gap:8px;}
 h2.sec::after{content:'';flex:1;height:1px;background:var(--line-admin);}
+
+/* --- Dashboard: jauge objectif --- */
+.gauge-card{display:flex;gap:22px;align-items:center;flex-wrap:wrap;}
+.gauge-svg{flex-shrink:0;}
+.gauge-side{flex:1;min-width:180px;}
+.gauge-side .row{display:flex;justify-content:space-between;align-items:baseline;padding:6px 0;border-bottom:1px solid var(--line-admin);}
+.gauge-side .row:last-child{border-bottom:none;}
+.gauge-side .lb{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;font-weight:700;}
+.gauge-side .vv{font-family:var(--mono);font-weight:700;font-size:15px;color:var(--text-strong);}
+.gauge-editobj{display:flex;gap:6px;align-items:center;margin-top:10px;}
+.gauge-editobj input{width:110px;padding:6px 8px;border:1px solid var(--field-border);border-radius:6px;font-family:var(--mono);font-size:12.5px;background:var(--surface);color:var(--text-strong);}
+.gauge-editobj button{padding:6px 10px;border-radius:6px;border:none;background:var(--odoo);color:#fff;font-size:11.5px;font-weight:700;}
+
+/* --- Dashboard: filtres catégorie --- */
+.dash-filters{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:12px;}
+.dash-filter-chip{padding:6px 13px;border-radius:20px;border:1px solid var(--line-admin);background:var(--surface);
+  font-size:11.5px;font-weight:700;color:var(--muted);cursor:pointer;}
+.dash-filter-chip.active{background:var(--odoo);border-color:var(--odoo);color:#fff;}
+
+/* --- Dashboard: bar chart ventes --- */
+.barchart-card{overflow-x:auto;}
+.barchart-svg{display:block;min-width:100%;}
+.bc-bar{cursor:pointer;}
+.bc-bar:hover{opacity:.8;}
+.bc-tooltip{font-size:9.5px;font-family:var(--mono);fill:var(--text-strong);}
+.bc-axis{font-size:9px;fill:var(--muted);}
 
 table{width:100%;border-collapse:collapse;font-size:12.8px;}
 thead th{text-align:left;font-size:10.3px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);
@@ -562,8 +599,19 @@ tbody tr:hover{background:var(--odoo-light);}
     <!-- DASHBOARD -->
     <div id="av-dashboard">
       <div class="grid g4" id="stat-cards"></div>
+
+      <h2 class="sec">Objectif du mois</h2>
+      <div class="card gauge-card" id="gauge-card"></div>
+
       <h2 class="sec">Ventes par service (aujourd'hui)</h2>
       <div class="grid g4" id="cat-cards"></div>
+
+      <h2 class="sec">Évolution des ventes (14 derniers jours)</h2>
+      <div class="dash-filters" id="dash-cat-filters"></div>
+      <div class="card barchart-card">
+        <svg class="barchart-svg" id="barchart-svg" viewBox="0 0 760 220" preserveAspectRatio="xMidYMid meet"></svg>
+      </div>
+
       <h2 class="sec">Alertes stock faible</h2>
       <div class="card" style="padding:0;overflow:auto;">
         <table><thead><tr><th>Code</th><th>Désignation</th><th>Service</th><th>Restant</th><th>Seuil</th></tr></thead>
@@ -827,6 +875,21 @@ async function init(){
       articles.push(art); await idbPut('articles',art);
     }
   }
+  if(!articles.some(a=>a.categorie==='VENTE GENERALE')){
+    const seedVente=[
+      {code:'010501/GEN',desig:'Bic Bleu',pv:100},
+      {code:'020501/GEN',desig:'Transparent',pv:100},
+      {code:'030501/GEN',desig:'Bristol',pv:100},
+      {code:'040501/GEN',desig:'Photo Munite',pv:1000},
+      {code:'050501/GEN',desig:'Impression',pv:100},
+      {code:'060501/GEN',desig:'Saisie Cv',pv:1000},
+      {code:'070501/GEN',desig:'Saisie De Fiche De Versement',pv:300},
+    ];
+    for(const s of seedVente){
+      const art={id:uid(),code:s.code,desig:s.desig,categorie:'VENTE GENERALE',qte:999,pa:Math.round(s.pv*0.5),pv:s.pv,seuil:0};
+      articles.push(art); await idbPut('articles',art);
+    }
+  }
   if(gerants.length===0){
     const seedGerants=[
       {id:uid(),nom:'Fatou',code:'1111',agence:'BLC JAXAY'},
@@ -836,6 +899,10 @@ async function init(){
   }
   fillCategorySelects();
   await initTheme();
+  try{
+    const r=await idbGet('settings','objectifMensuel');
+    objectifMensuel = (r && r.value) ? r.value : 100000;
+  }catch(e){ objectifMensuel = 100000; }
 }
 init();
 
@@ -1001,17 +1068,58 @@ function selectPosCat(cat){
 }
 document.getElementById('pos-search').addEventListener('input',renderPosGrid);
 
+function renderJournalTable(){
+  const today=new Date().toISOString().slice(0,10);
+  // Uniquement les ventes réellement encaissées (créées au clic sur "Encaisser") du jour
+  const list=[...ventes].filter(v=>v.categorie==='VENTE GENERALE' && v.date===today)
+    .sort((a,b)=> (a.date+a.heure) < (b.date+b.heure) ? 1 : -1); // plus récent -> plus ancien
+  let rows='';
+  const dayTotal=list.reduce((s,v)=>s+v.total,0);
+  if(!list.length){
+    rows=`<tr class="jr-empty"><td colspan="7">Aucune vente enregistrée pour ce service.</td></tr>`;
+  } else {
+    list.forEach(v=>{
+      rows+=`<tr><td>${v.heure}</td><td>${v.code}</td><td>${v.desig}</td><td class="num">${v.qte}</td>
+        <td class="num">${fmt(v.pu)}</td><td class="num">${fmt(v.total)}</td><td>${v.paiement}</td></tr>`;
+    });
+  }
+  return `<div class="journal-wrap">
+    <h3 class="journal-title">Journal des ventes — Vente Générale</h3>
+    <table class="journal-table">
+      <thead><tr><th>Heure</th><th>Code</th><th>Désignation</th><th>Quantité</th><th>P. Unitaire</th><th>Total</th><th>Paiement</th></tr></thead>
+      <tbody>${rows}</tbody>
+      ${list.length?`<tfoot><tr class="jr-total"><td colspan="5">Total encaissé aujourd'hui</td><td class="num">${fmt(dayTotal)}</td><td></td></tr></tfoot>`:''}
+    </table>
+  </div>`;
+}
+
 function renderPosGrid(){
   const q=document.getElementById('pos-search').value.trim().toLowerCase();
-  const grid=document.getElementById('pos-grid');
+  const wrap=document.querySelector('.pos-grid-wrap');
   let list;
   if(q){
     list=articles.filter(a=>a.desig.toLowerCase().includes(q)||a.code.toLowerCase().includes(q));
   } else {
     list=articles.filter(a=>a.categorie===posCat);
   }
-  if(!list.length){grid.innerHTML='';document.querySelector('.pos-grid-wrap').innerHTML=`<div class="pos-empty">Aucun article ${q?'trouvé':'dans ce service'}.</div>`;return;}
-  document.querySelector('.pos-grid-wrap').innerHTML='<div class="pos-grid" id="pos-grid"></div>';
+
+  // Le journal (alimenté directement par le tableau `ventes` = source unique des
+  // activités de vente réellement encaissées) reste TOUJOURS visible sur l'écran
+  // VENTE GENERALE, qu'une recherche soit active ou non.
+  const journalHtml = (posCat==='VENTE GENERALE') ? renderJournalTable() : '';
+
+  if(posCat==='VENTE GENERALE' && !q){
+    // Pas de raccourcis/cartes d'articles au-dessus du journal pour ce service.
+    // Le catalogue et l'ajout via la recherche restent pleinement fonctionnels.
+    wrap.innerHTML=journalHtml;
+    return;
+  }
+
+  if(!list.length){
+    wrap.innerHTML= journalHtml || `<div class="pos-empty">Aucun article ${q?'trouvé':'dans ce service'}.</div>`;
+    return;
+  }
+  wrap.innerHTML='<div class="pos-grid" id="pos-grid"></div>'+journalHtml;
   const g=document.getElementById('pos-grid');
   g.innerHTML=list.map(a=>{
     const low=a.qte<=a.seuil;
@@ -1093,7 +1201,9 @@ document.getElementById('pos-validate').addEventListener('click',async ()=>{
     if(a){a.qte-=c.qte; await idbPut('articles',a);}
   }
   showTicket(cart,now,selectedPayment,invoiceNo);
-  cart=[]; renderCartPos(); renderPosGrid();
+  cart=[]; renderCartPos();
+  document.getElementById('pos-search').value='';
+  renderPosGrid();
 });
 async function getNextInvoiceNumber(){
   let seq=1;
@@ -1233,6 +1343,9 @@ function askDeleteGerant(id){
 }
 
 /* ---- DASHBOARD ---- */
+let objectifMensuel=100000;
+let dashCatFilter='ALL';
+
 function renderDashboard(){
   const now=new Date();
   const today=todayStr();
@@ -1250,17 +1363,128 @@ function renderDashboard(){
     <div class="kpi"><div class="k">Ventes mois</div><div class="v">${fmt(sum(vMois))} F</div></div>
     <div class="kpi ${lowStock.length?'alert':''}"><div class="k">Alertes stock</div><div class="v">${lowStock.length}</div></div>
   `;
+
+  renderGauge(sum(vMois));
+
   document.getElementById('cat-cards').innerHTML=CATEGORIES.map(c=>{
     const t=sum(vJour.filter(v=>v.categorie===c));
     return `<div class="card" style="border-top:3px solid ${CAT_COLOR[c]};">
       <div style="font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;font-weight:700;">${c}</div>
       <div style="font-family:var(--mono);font-size:19px;font-weight:700;color:var(--text-strong);margin-top:4px;">${fmt(t)} F</div></div>`;
   }).join('');
+
+  renderDashFilters();
+  renderBarChart();
+
   const body=document.getElementById('low-stock-body');
   document.getElementById('low-stock-empty').style.display= lowStock.length? 'none':'block';
   body.innerHTML=lowStock.map(a=>`<tr><td>${a.code}</td><td>${a.desig}</td><td>${a.categorie}</td>
     <td class="num">${a.qte}</td><td class="num">${a.seuil}</td></tr>`).join('');
 }
+
+/* Jauge "% objectif atteint" (style speedomètre, s'inspire du tableau de bord CFO) */
+function renderGauge(caReel){
+  const objectif=objectifMensuel||1;
+  const pct=Math.max(0,Math.min(1,caReel/objectif));
+  const cx=100,cy=100,r=80;
+  // Arc de fond en 3 zones (rouge / orange / vert), demi-cercle 180°
+  const angleFor=p=>Math.PI - p*Math.PI; // p:0->PI(gauche) .. 1->0(droite)
+  const pt=(p)=>{const a=angleFor(p); return [cx+r*Math.cos(a), cy-r*Math.sin(a)];};
+  const arcPath=(p0,p1)=>{
+    const [x0,y0]=pt(p0), [x1,y1]=pt(p1);
+    return `M ${x0} ${y0} A ${r} ${r} 0 0 1 ${x1} ${y1}`;
+  };
+  const needleAngle=angleFor(pct);
+  const needleLen=r-14;
+  const nx=cx+needleLen*Math.cos(needleAngle), ny=cy-needleLen*Math.sin(needleAngle);
+  const pctDisplay=Math.round(pct*100);
+  const color= pct<0.4?'var(--red)': pct<0.7?'var(--orange)':'var(--green)';
+
+  const svg=`
+    <svg class="gauge-svg" width="200" height="150" viewBox="0 0 200 140">
+      <path d="${arcPath(0,0.4)}" fill="none" stroke="var(--red)" stroke-width="16" stroke-linecap="round" opacity=".85"/>
+      <path d="${arcPath(0.4,0.7)}" fill="none" stroke="var(--orange)" stroke-width="16" opacity=".85"/>
+      <path d="${arcPath(0.7,1)}" fill="none" stroke="var(--green)" stroke-width="16" stroke-linecap="round" opacity=".85"/>
+      <line x1="${cx}" y1="${cy}" x2="${nx}" y2="${ny}" stroke="var(--ink)" stroke-width="3" stroke-linecap="round"/>
+      <circle cx="${cx}" cy="${cy}" r="6" fill="var(--ink)"/>
+      <text x="${cx}" y="${cy+28}" text-anchor="middle" font-family="var(--mono)" font-size="22" font-weight="700" fill="${color}">${pctDisplay}%</text>
+      <text x="${cx-r}" y="${cy+14}" font-size="9" fill="var(--muted)">0%</text>
+      <text x="${cx+r-14}" y="${cy+14}" font-size="9" fill="var(--muted)">100%+</text>
+    </svg>`;
+
+  document.getElementById('gauge-card').innerHTML=`
+    ${svg}
+    <div class="gauge-side">
+      <div class="row"><span class="lb">C.A. réel (mois)</span><span class="vv">${fmt(caReel)} F</span></div>
+      <div class="row"><span class="lb">C.A. prévu (objectif)</span><span class="vv">${fmt(objectif)} F</span></div>
+      <div class="row"><span class="lb">Écart</span><span class="vv" style="color:${caReel>=objectif?'var(--green)':'var(--red)'};">${caReel>=objectif?'+':''}${fmt(caReel-objectif)} F</span></div>
+      <div class="gauge-editobj">
+        <input type="number" id="objectif-input" placeholder="Nouvel objectif" min="0" step="1000">
+        <button id="objectif-save">Enregistrer</button>
+      </div>
+    </div>`;
+  document.getElementById('objectif-save').addEventListener('click', async ()=>{
+    const val=parseInt(document.getElementById('objectif-input').value);
+    if(!val || val<=0){ toast('Entrez un objectif valide.'); return; }
+    objectifMensuel=val;
+    await idbPut('settings',{key:'objectifMensuel',value:val});
+    toast('Objectif du mois mis à jour.');
+    renderDashboard();
+  });
+}
+
+/* Filtres catégorie pour le graphique d'évolution des ventes */
+function renderDashFilters(){
+  const wrap=document.getElementById('dash-cat-filters');
+  const chips=['ALL',...CATEGORIES];
+  wrap.innerHTML=chips.map(c=>`<button class="dash-filter-chip ${dashCatFilter===c?'active':''}" data-c="${c}">${c==='ALL'?'Toutes catégories':c}</button>`).join('');
+  wrap.querySelectorAll('.dash-filter-chip').forEach(b=>{
+    b.addEventListener('click',()=>{ dashCatFilter=b.dataset.c; renderDashFilters(); renderBarChart(); });
+  });
+}
+
+/* Graphique en barres : ventes des 14 derniers jours (filtrable par catégorie) */
+function renderBarChart(){
+  const days=[];
+  for(let i=13;i>=0;i--){
+    const d=new Date(); d.setDate(d.getDate()-i);
+    days.push(d.toISOString().slice(0,10));
+  }
+  const filtered = dashCatFilter==='ALL' ? ventes : ventes.filter(v=>v.categorie===dashCatFilter);
+  const totals=days.map(d=>filtered.filter(v=>v.date===d).reduce((s,v)=>s+v.total,0));
+  const max=Math.max(1,...totals);
+  const W=760,H=220,padL=44,padB=28,padT=12,padR=8;
+  const chartW=W-padL-padR, chartH=H-padT-padB;
+  const bw=chartW/days.length;
+  const today=todayStr();
+  const color = dashCatFilter==='ALL' ? 'var(--odoo)' : CAT_COLOR[dashCatFilter];
+
+  let bars='', labels='', gridLines='';
+  for(let g=0;g<=4;g++){
+    const y=padT+chartH-(g/4)*chartH;
+    gridLines+=`<line x1="${padL}" y1="${y}" x2="${W-padR}" y2="${y}" stroke="var(--line-admin)" stroke-width="1"/>
+      <text x="${padL-6}" y="${y+3}" text-anchor="end" class="bc-axis">${fmt(max*g/4)}</text>`;
+  }
+  days.forEach((d,i)=>{
+    const t=totals[i];
+    const h=(t/max)*chartH;
+    const x=padL+i*bw+bw*0.18;
+    const y=padT+chartH-h;
+    const isToday=d===today;
+    const dt=new Date(d+'T00:00:00');
+    const label=dt.toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'});
+    bars+=`<rect class="bc-bar" x="${x}" y="${y}" width="${bw*0.64}" height="${h}" rx="3"
+      fill="${isToday?'var(--gold)':color}" opacity="${isToday?1:0.82}"><title>${label} : ${fmt(t)} F</title></rect>`;
+    if(t>0){
+      bars+=`<text x="${x+bw*0.32}" y="${y-5}" text-anchor="middle" class="bc-tooltip">${fmt(t)}</text>`;
+    }
+    labels+=`<text x="${x+bw*0.32}" y="${H-8}" text-anchor="middle" class="bc-axis" ${isToday?'font-weight="700"':''}>${label}</text>`;
+  });
+
+  document.getElementById('barchart-svg').innerHTML=`${gridLines}${bars}${labels}`;
+}
+
+
 
 /* ---- VENTE (admin) ---- */
 let adminCart=[];
@@ -1312,6 +1536,7 @@ document.getElementById('btn-valider-vente').addEventListener('click',async ()=>
   toast('Vente validée et stock mis à jour.');
   adminCart=[]; renderCartAdmin();
   populateArticleSelect(document.getElementById('v-cat').value);
+  if(document.getElementById('pos-search')) renderPosGrid();
 });
 
 /* ---- ACHAT ---- */
