@@ -701,7 +701,7 @@ tbody tr:hover{background:var(--odoo-light);}
     <div id="av-historique" class="hidden">
       <div class="grid g3" id="hist-stats"></div>
       <div class="card" style="padding:0;overflow:auto;margin-top:14px;">
-        <table><thead><tr><th>Date</th><th>Heure</th><th>Désignation</th><th>Service</th><th>Qté</th><th>P.U.</th><th>Total</th><th>Paiement</th><th>Caissier</th></tr></thead>
+        <table><thead><tr><th>Date</th><th>Heure</th><th>Désignation</th><th>Service</th><th>Qté</th><th>P.U.</th><th>Total</th><th>Paiement</th><th>Caissier</th><th>Actions</th></tr></thead>
         <tbody id="hist-body"></tbody></table>
         <div class="panel-empty" id="hist-empty" style="display:none;">Aucune vente enregistrée.</div>
       </div>
@@ -746,6 +746,25 @@ tbody tr:hover{background:var(--odoo-light);}
     <div class="row">
       <button class="btn btn-ghost" id="modal-cancel">Annuler</button>
       <button class="btn btn-red" id="modal-confirm">Supprimer</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="edit-vente-bg">
+  <div class="modal">
+    <h3>Modifier la vente</h3>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:10px;" id="ev-desig-label"></div>
+    <div class="formrow">
+      <div class="field" style="width:100px;"><label>Quantité</label><input type="number" id="ev-qte" min="1"></div>
+      <div class="field" style="width:130px;"><label>P. Unitaire</label><input type="number" id="ev-pu" min="0"></div>
+      <div class="field" style="min-width:150px;"><label>Paiement</label>
+        <select id="ev-paiement"><option value="ESPECES">ESPECES</option><option value="ORANGE MONEY">ORANGE MONEY</option><option value="WAVE">WAVE</option><option value="CREDIT">CREDIT</option></select>
+      </div>
+    </div>
+    <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">Le stock de l'article sera ajusté automatiquement selon l'écart de quantité.</div>
+    <div class="row">
+      <button class="btn btn-ghost" id="ev-cancel">Annuler</button>
+      <button class="btn btn-odoo" id="ev-save">Enregistrer</button>
     </div>
   </div>
 </div>
@@ -1654,6 +1673,17 @@ document.getElementById('modal-confirm').addEventListener('click',async ()=>{
     await idbDelete('gerants',pendingDelete.id);
     renderGerants(); toast('Gérant supprimé.');
   }
+  if(pendingDelete && pendingDelete.type==='vente'){
+    const v=ventes.find(x=>x.id===pendingDelete.id);
+    if(v){
+      const a=articles.find(x=>x.id===v.articleId);
+      if(a){ a.qte+=v.qte; await safePut('articles',a); } // recrédit du stock
+      ventes=ventes.filter(x=>x.id!==pendingDelete.id);
+      await idbDelete('ventes',pendingDelete.id);
+      refreshAfterVenteChange();
+      toast('Vente supprimée, stock recrédité.');
+    }
+  }
   document.getElementById('modal-bg').classList.remove('show'); pendingDelete=null;
 });
 
@@ -1672,13 +1702,70 @@ function renderHistorique(){
   const body=document.getElementById('hist-body');
   document.getElementById('hist-empty').style.display= ventes.length? 'none':'block';
   body.innerHTML=[...ventes].reverse().slice(0,300).map(v=>`<tr><td>${v.date}</td><td>${v.heure}</td><td>${v.desig}</td>
-    <td>${v.categorie}</td><td class="num">${v.qte}</td><td class="num">${fmt(v.pu)}</td><td class="num">${fmt(v.total)}</td><td>${v.paiement}</td><td>${v.caissier||'—'}</td></tr>`).join('');
+    <td>${v.categorie}</td><td class="num">${v.qte}</td><td class="num">${fmt(v.pu)}</td><td class="num">${fmt(v.total)}</td><td>${v.paiement}</td><td>${v.caissier||'—'}</td>
+    <td><button class="btn btn-ghost btn-sm" onclick="askEditVente('${v.id}')">Modifier</button>
+        <button class="btn btn-ghost btn-sm" style="color:var(--red);" onclick="askDeleteVente('${v.id}')">Supprimer</button></td></tr>`).join('');
 
   const vbody=document.getElementById('vers-admin-body');
   document.getElementById('vers-admin-empty').style.display= versements.length? 'none':'block';
   vbody.innerHTML=[...versements].reverse().slice(0,200).map(v=>`<tr><td>${v.date}</td><td>${v.heure}</td>
     <td>${v.caissier}</td><td class="num">${fmt(v.montant)} F</td><td>${v.note||'—'}</td></tr>`).join('');
 }
+
+/* ---- MODIFIER / SUPPRIMER UNE VENTE (Espace Gérant uniquement) ----
+   Cette section n'est atteignable que depuis l'espace admin, protégé par le PIN
+   (voir admin-pin / tryAdminLogin). Le caissier au guichet n'a aucun accès à ces actions. */
+function refreshAfterVenteChange(){
+  renderHistorique();
+  renderDashboard();
+  if(document.getElementById('pos-search')) renderPosGrid();
+}
+
+function askDeleteVente(id){
+  pendingDelete={type:'vente',id};
+  document.getElementById('modal-title').textContent='Supprimer la vente';
+  document.getElementById('modal-body').textContent="Cette vente sera retirée du journal et de l'historique, et la quantité vendue sera recréditée au stock. Confirmer ?";
+  document.getElementById('modal-bg').classList.add('show');
+}
+
+let editingVenteId=null;
+function askEditVente(id){
+  const v=ventes.find(x=>x.id===id);
+  if(!v) return;
+  editingVenteId=id;
+  document.getElementById('ev-desig-label').textContent=`${v.desig} — ${v.date} ${v.heure} (${v.categorie})`;
+  document.getElementById('ev-qte').value=v.qte;
+  document.getElementById('ev-pu').value=v.pu;
+  document.getElementById('ev-paiement').value=v.paiement;
+  document.getElementById('edit-vente-bg').classList.add('show');
+}
+document.getElementById('ev-cancel').addEventListener('click',()=>{
+  document.getElementById('edit-vente-bg').classList.remove('show'); editingVenteId=null;
+});
+document.getElementById('ev-save').addEventListener('click', async ()=>{
+  const v=ventes.find(x=>x.id===editingVenteId);
+  if(!v){ document.getElementById('edit-vente-bg').classList.remove('show'); return; }
+  const newQte=parseInt(document.getElementById('ev-qte').value)||0;
+  const newPu=parseFloat(document.getElementById('ev-pu').value)||0;
+  const newPaiement=document.getElementById('ev-paiement').value;
+  if(newQte<1){ toast('Quantité invalide.'); return; }
+
+  const a=articles.find(x=>x.id===v.articleId);
+  const deltaQte=newQte-v.qte; // >0 si on vend plus qu'avant, <0 si on vend moins
+  if(a){
+    if(deltaQte>0 && a.qte<deltaQte){ toast(`Stock insuffisant pour augmenter la quantité (disponible: ${a.qte}).`); return; }
+    a.qte-=deltaQte; // on retire du stock si on vend plus, on recrédite si on vend moins
+    await safePut('articles',a);
+  }
+
+  v.qte=newQte; v.pu=newPu; v.total=newQte*newPu; v.paiement=newPaiement;
+  await safePut('ventes',v);
+
+  toast('Vente modifiée.');
+  document.getElementById('edit-vente-bg').classList.remove('show');
+  editingVenteId=null;
+  refreshAfterVenteChange();
+});
 </script>
 </body>
 </html>
