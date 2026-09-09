@@ -3,7 +3,16 @@
 <head>
 <meta charset="UTF-8">
 <title>LACARTE — Caisse & Gestion</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- PWA : permet d'installer l'app sur Android et iPhone (gratuit, "Ajouter à l'écran d'accueil") -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#714B67">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="LaCarte Caisse">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <style>
 :root{
@@ -889,17 +898,22 @@ function fillCategorySelects(){
 
 /* ============== INIT ============== */
 async function init(){
-  await openDB();
-  articles=await idbGetAll('articles');
-  ventes=await idbGetAll('ventes');
-  achats=await idbGetAll('achats');
-  versements=await idbGetAll('versements');
-  gerants=await idbGetAll('gerants');
-  ouvertures=await idbGetAll('ouvertures');
+  try{
+    await openDB();
+    articles=await idbGetAll('articles');
+    ventes=await idbGetAll('ventes');
+    achats=await idbGetAll('achats');
+    versements=await idbGetAll('versements');
+    gerants=await idbGetAll('gerants');
+    ouvertures=await idbGetAll('ouvertures');
+  }catch(e){
+    console.warn('Échec de chargement IndexedDB, démarrage avec des listes vides.', e);
+    articles=articles||[]; ventes=ventes||[]; achats=achats||[]; versements=versements||[]; gerants=gerants||[]; ouvertures=ouvertures||[];
+  }
   if(articles.length===0){
     for(const a of SEED_ARTICLES){
       const art={id:uid(),code:a.code,desig:a.desig,categorie:a.categorie,qte:a.qte,pa:a.pa,pv:a.pv,seuil:a.seuil};
-      articles.push(art); await idbPut('articles',art);
+      articles.push(art); await safePut('articles',art);
     }
   }
   if(!articles.some(a=>a.categorie==='VENTE GENERALE')){
@@ -914,7 +928,7 @@ async function init(){
     ];
     for(const s of seedVente){
       const art={id:uid(),code:s.code,desig:s.desig,categorie:'VENTE GENERALE',qte:999,pa:Math.round(s.pv*0.5),pv:s.pv,seuil:0};
-      articles.push(art); await idbPut('articles',art);
+      articles.push(art); await safePut('articles',art);
     }
   }
   if(gerants.length===0){
@@ -922,7 +936,7 @@ async function init(){
       {id:uid(),nom:'Fatou',code:'1111',agence:'BLC JAXAY'},
       {id:uid(),nom:'Modou',code:'2222',agence:'BLC NDIEMANE'},
     ];
-    for(const g of seedGerants){ gerants.push(g); await idbPut('gerants',g); }
+    for(const g of seedGerants){ gerants.push(g); await safePut('gerants',g); }
   }
   fillCategorySelects();
   await initTheme();
@@ -931,7 +945,7 @@ async function init(){
     objectifMensuel = (r && r.value) ? r.value : 100000;
   }catch(e){ objectifMensuel = 100000; }
 }
-init();
+init().catch(e=>console.error('Erreur init():', e));
 
 /* ============================================================
    THEME (jour / nuit)
@@ -1343,7 +1357,7 @@ document.getElementById('vers-save').addEventListener('click',async ()=>{
   const now=new Date();
   const v={id:uid(),date:todayStr(),heure:now.toTimeString().slice(0,5),
     caissier:currentCashier||'Guichet',montant,note};
-  versements.push(v); await idbPut('versements',v);
+  versements.push(v); await safePut('versements',v);
   document.getElementById('vers-note').value='';
   renderVersementPanel();
   toast('Versement enregistré.');
@@ -1382,7 +1396,7 @@ document.getElementById('btn-add-gerant').addEventListener('click',async ()=>{
   if(!nom||!code){toast('Nom et code requis.');return;}
   if(gerants.some(g=>g.code===code)){toast('Ce code est déjà utilisé.');return;}
   const g={id:uid(),nom,code,agence};
-  gerants.push(g); await idbPut('gerants',g);
+  gerants.push(g); await safePut('gerants',g);
   document.getElementById('g-nom').value=''; document.getElementById('g-code').value='';
   renderGerants();
   toast('Gérant ajouté.');
@@ -1608,11 +1622,11 @@ document.getElementById('btn-add-achat').addEventListener('click',async ()=>{
   const fourn=document.getElementById('a-fourn').value.trim();
   if(!code||!desig||qte<1){toast('Renseignez code, désignation et quantité.');return;}
   const achat={id:uid(),date:todayStr(),code,desig,categorie:cat,qte,pv,total:qte*pv,fourn};
-  achats.push(achat); await idbPut('achats',achat);
+  achats.push(achat); await safePut('achats',achat);
   let a=articles.find(x=>x.code===code);
   if(a){ a.qte+=qte; if(pv) a.pv=pv; }
   else{ a={id:uid(),code,desig,categorie:cat,qte,pa:pv,pv,seuil:3}; articles.push(a); }
-  await idbPut('articles',a);
+  await safePut('articles',a);
   ['a-code','a-desig','a-qte','a-prix','a-fourn'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('a-qte').value=1;
   renderAchatTable();
@@ -1631,7 +1645,7 @@ document.getElementById('btn-add-article').addEventListener('click',async ()=>{
   if(!code||!desig){toast('Code et désignation requis.');return;}
   if(articles.some(a=>a.code===code)){toast('Ce code existe déjà.');return;}
   const a={id:uid(),code,desig,categorie:cat,qte,pa,pv,seuil};
-  articles.push(a); await idbPut('articles',a);
+  articles.push(a); await safePut('articles',a);
   ['s-code','s-desig','s-pa','s-pv'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('s-qte').value=0; document.getElementById('s-seuil').value=3;
   renderStockTable();
@@ -1711,6 +1725,15 @@ function renderHistorique(){
   vbody.innerHTML=[...versements].reverse().slice(0,200).map(v=>`<tr><td>${v.date}</td><td>${v.heure}</td>
     <td>${v.caissier}</td><td class="num">${fmt(v.montant)} F</td><td>${v.note||'—'}</td></tr>`).join('');
 }
+
+/* PWA : enregistrement du service worker (usage hors-ligne + installation
+   sur Android/iPhone). N'empêche jamais l'app de fonctionner si absent/refusé. */
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(e => console.warn('SW non enregistré :', e));
+  });
+}
+
 
 /* ---- MODIFIER / SUPPRIMER UNE VENTE (Espace Gérant uniquement) ----
    Cette section n'est atteignable que depuis l'espace admin, protégé par le PIN
