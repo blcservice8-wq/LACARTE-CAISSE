@@ -2,7 +2,7 @@
   "name": "LaCarte Caisse — BLC Services",
   "short_name": "LaCarte Caisse",
   "description": "Caisse et gestion BLC Services (Vente Générale, Cosmétique, Prêt à porter, Tél Accessoires, Informatique)",
-  "start_url": "./lacarte-caisse.html",
+  "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",
