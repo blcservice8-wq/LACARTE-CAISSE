@@ -1,0 +1,17 @@
+{
+  "name": "LaCarte Caisse — BLC Services",
+  "short_name": "LaCarte Caisse",
+  "description": "Caisse et gestion BLC Services (Vente Générale, Cosmétique, Prêt à porter, Tél Accessoires, Informatique)",
+  "start_url": "./lacarte-caisse.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#F3F1EC",
+  "theme_color": "#714B67",
+  "lang": "fr",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
