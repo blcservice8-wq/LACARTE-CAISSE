@@ -534,7 +534,7 @@ tbody tr:hover{background:var(--odoo-light);}
     <div class="pos-cats" id="pos-cats"></div>
     <div class="pos-center">
       <div class="pos-search"><input id="pos-search" placeholder="🔍 Rechercher un article ou un code…"></div>
-      <div class="pos-grid-wrap"><div class="pos-grid"></div></div>
+      <div class="pos-grid-wrap"><div class="pos-grid" id="pos-grid"></div></div>
     </div>
     <div class="pos-cart">
       <div class="pos-cart-head"><b>Ticket en cours</b><button class="clr" id="pos-clear">Vider</button></div>
@@ -774,51 +774,6 @@ tbody tr:hover{background:var(--odoo-light);}
     <div class="row">
       <button class="btn btn-ghost" id="ev-cancel">Annuler</button>
       <button class="btn btn-odoo" id="ev-save">Enregistrer</button>
-    </div>
-  </div>
-</div>
-
-<div class="modal-bg" id="edit-article-bg">
-  <div class="modal">
-    <h3>Modifier l'article</h3>
-    <div class="formrow">
-      <div class="field"><label>Code</label><input id="ea-code" placeholder="ex: 010102/COS"></div>
-      <div class="field"><label>Désignation</label><input id="ea-desig" placeholder="Nom article"></div>
-      <div class="field" style="min-width:150px;"><label>Service</label><select id="ea-cat"></select></div>
-    </div>
-    <div class="formrow">
-      <div class="field" style="width:100px;"><label>Quantité</label><input type="number" id="ea-qte" min="0"></div>
-      <div class="field" style="width:120px;"><label>Prix achat</label><input type="number" id="ea-pa" min="0"></div>
-      <div class="field" style="width:120px;"><label>Prix vente</label><input type="number" id="ea-pv" min="0"></div>
-      <div class="field" style="width:90px;"><label>Seuil</label><input type="number" id="ea-seuil" min="0"></div>
-    </div>
-    <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">La quantité, les prix, le code et la désignation seront mis à jour partout dans l'application (caisse, ventes, achats, historique).</div>
-    <div class="row">
-      <button class="btn btn-ghost" id="ea-cancel">Annuler</button>
-      <button class="btn btn-odoo" id="ea-save">Enregistrer</button>
-    </div>
-  </div>
-</div>
-
-<div class="modal-bg" id="stock-mvt-bg">
-  <div class="modal">
-    <h3 id="mvt-title">Mouvement de stock</h3>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:10px;" id="mvt-desig-label"></div>
-    <div class="formrow">
-      <div class="field" style="width:100px;"><label>Quantité</label><input type="number" id="mvt-qte" value="1" min="1"></div>
-      <div class="field" style="width:130px;"><label id="mvt-prix-label">Prix vente</label><input type="number" id="mvt-prix" min="0"></div>
-      <div class="field" style="min-width:150px;" id="mvt-fourn-field">
-        <label>Fournisseur</label><input id="mvt-fourn" placeholder="Optionnel">
-      </div>
-      <div class="field" style="min-width:150px;" id="mvt-paiement-field">
-        <label>Paiement</label>
-        <select id="mvt-paiement"><option value="ESPECES">ESPECES</option><option value="ORANGE MONEY">ORANGE MONEY</option><option value="WAVE">WAVE</option><option value="CREDIT">CREDIT</option></select>
-      </div>
-    </div>
-    <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;" id="mvt-note">Le stock, le journal des achats/ventes et l'historique seront mis à jour automatiquement.</div>
-    <div class="row">
-      <button class="btn btn-ghost" id="mvt-cancel">Annuler</button>
-      <button class="btn btn-odoo" id="mvt-save">Enregistrer</button>
     </div>
   </div>
 </div>
@@ -1710,107 +1665,9 @@ function renderStockTable(){
     return `<tr><td>${a.code}</td><td>${a.desig}</td><td>${a.categorie}</td><td class="num">${a.qte}</td>
     <td class="num">${fmt(a.pa)}</td><td class="num">${fmt(a.pv)}</td>
     <td><span class="tag ${low?'low':''}">${low?'STOCK FAIBLE':'OK'}</span></td>
-    <td style="white-space:nowrap;">
-      <button class="btn btn-ghost btn-sm" onclick="askEditArticle('${a.id}')">Modifier</button>
-      <button class="btn btn-ghost btn-sm" onclick="askQuickMvt('${a.id}','achat')" title="Entrée de stock">+ Achat</button>
-      <button class="btn btn-ghost btn-sm" onclick="askQuickMvt('${a.id}','vente')" title="Sortie de stock">+ Vente</button>
-      <button class="btn btn-ghost btn-sm" onclick="askDeleteArticle('${a.id}')">Suppr.</button>
-    </td></tr>`;
+    <td><button class="btn btn-ghost btn-sm" onclick="askDeleteArticle('${a.id}')">Suppr.</button></td></tr>`;
   }).join('');
 }
-/* ---- EDITION ARTICLE (STOCK) ---- */
-let editingArticleId=null;
-function askEditArticle(id){
-  const a=articles.find(x=>x.id===id);
-  if(!a) return;
-  editingArticleId=id;
-  document.getElementById('ea-code').value=a.code;
-  document.getElementById('ea-desig').value=a.desig;
-  document.getElementById('ea-cat').innerHTML=CATEGORIES.map(c=>`<option value="${c}" ${c===a.categorie?'selected':''}>${c}</option>`).join('');
-  document.getElementById('ea-qte').value=a.qte;
-  document.getElementById('ea-pa').value=a.pa;
-  document.getElementById('ea-pv').value=a.pv;
-  document.getElementById('ea-seuil').value=a.seuil;
-  document.getElementById('edit-article-bg').classList.add('show');
-}
-document.getElementById('ea-cancel').addEventListener('click',()=>{
-  document.getElementById('edit-article-bg').classList.remove('show'); editingArticleId=null;
-});
-document.getElementById('ea-save').addEventListener('click', async ()=>{
-  const a=articles.find(x=>x.id===editingArticleId);
-  if(!a){ document.getElementById('edit-article-bg').classList.remove('show'); return; }
-  const newCode=document.getElementById('ea-code').value.trim();
-  const newDesig=document.getElementById('ea-desig').value.trim();
-  const newCat=document.getElementById('ea-cat').value;
-  const newQte=parseInt(document.getElementById('ea-qte').value)||0;
-  const newPa=parseFloat(document.getElementById('ea-pa').value)||0;
-  const newPv=parseFloat(document.getElementById('ea-pv').value)||0;
-  const newSeuil=parseInt(document.getElementById('ea-seuil').value)||0;
-  if(!newCode||!newDesig){toast('Code et désignation requis.');return;}
-  if(newQte<0){toast('Quantité invalide.');return;}
-  if(newCode!==a.code && articles.some(x=>x.code===newCode && x.id!==a.id)){toast('Ce code existe déjà pour un autre article.');return;}
-  a.code=newCode; a.desig=newDesig; a.categorie=newCat; a.qte=newQte; a.pa=newPa; a.pv=newPv; a.seuil=newSeuil;
-  await safePut('articles',a);
-  toast('Article modifié. Stock mis à jour partout.');
-  document.getElementById('edit-article-bg').classList.remove('show');
-  editingArticleId=null;
-  renderStockTable();
-  if(document.getElementById('cat-cards')) renderDashboard();
-  if(document.getElementById('pos-search')) renderPosGrid();
-});
-
-/* ---- MOUVEMENT RAPIDE DE STOCK (ACHAT / VENTE DEPUIS LE STOCK) ---- */
-let mvtArticleId=null, mvtType=null;
-function askQuickMvt(id,type){
-  const a=articles.find(x=>x.id===id);
-  if(!a) return;
-  mvtArticleId=id; mvtType=type;
-  document.getElementById('mvt-title').textContent = type==='achat' ? 'Entrée de stock (Achat)' : 'Sortie de stock (Vente)';
-  document.getElementById('mvt-desig-label').textContent = `${a.desig} — Code: ${a.code} · Catégorie: ${a.categorie} · Stock actuel: ${a.qte}`;
-  document.getElementById('mvt-qte').value=1;
-  document.getElementById('mvt-prix-label').textContent = 'Prix vente';
-  document.getElementById('mvt-prix').value=a.pv;
-  document.getElementById('mvt-fourn-field').style.display = type==='achat' ? '' : 'none';
-  document.getElementById('mvt-paiement-field').style.display = type==='vente' ? '' : 'none';
-  document.getElementById('mvt-fourn').value='';
-  document.getElementById('stock-mvt-bg').classList.add('show');
-}
-document.getElementById('mvt-cancel').addEventListener('click',()=>{
-  document.getElementById('stock-mvt-bg').classList.remove('show'); mvtArticleId=null; mvtType=null;
-});
-document.getElementById('mvt-save').addEventListener('click', async ()=>{
-  const a=articles.find(x=>x.id===mvtArticleId);
-  if(!a){ document.getElementById('stock-mvt-bg').classList.remove('show'); return; }
-  const qte=parseInt(document.getElementById('mvt-qte').value)||0;
-  const prix=parseFloat(document.getElementById('mvt-prix').value)||0;
-  if(qte<1){toast('Quantité invalide.');return;}
-  if(mvtType==='achat'){
-    const fourn=document.getElementById('mvt-fourn').value.trim();
-    const achat={id:uid(),date:todayStr(),code:a.code,desig:a.desig,categorie:a.categorie,qte,pv:prix,total:qte*prix,fourn};
-    achats.push(achat); await safePut('achats',achat);
-    a.qte+=qte; if(prix) a.pv=prix;
-    await safePut('articles',a);
-    if(document.getElementById('achat-body')) renderAchatTable();
-    toast('Achat enregistré. Stock mis à jour.');
-  } else {
-    if(qte>a.qte){toast(`Stock insuffisant (disponible: ${a.qte}).`);return;}
-    const paiement=document.getElementById('mvt-paiement').value;
-    const now=new Date(); const date=now.toISOString().slice(0,10); const heure=now.toTimeString().slice(0,5);
-    const vente={id:uid(),date,heure,articleId:a.id,code:a.code,desig:a.desig,categorie:a.categorie,
-      qte,pu:prix,total:qte*prix,paiement,caissier:'Gérant'};
-    ventes.push(vente); await safePut('ventes',vente);
-    a.qte-=qte;
-    await safePut('articles',a);
-    if(document.getElementById('hist-body')) refreshAfterVenteChange();
-    toast('Vente enregistrée. Stock mis à jour.');
-  }
-  document.getElementById('stock-mvt-bg').classList.remove('show');
-  mvtArticleId=null; mvtType=null;
-  renderStockTable();
-  if(document.getElementById('cat-cards')) renderDashboard();
-  if(document.getElementById('pos-search')) renderPosGrid();
-});
-
 let pendingDelete=null;
 function askDeleteArticle(id){
   pendingDelete={type:'article',id};
