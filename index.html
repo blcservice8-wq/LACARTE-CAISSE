@@ -700,7 +700,8 @@ tbody tr:hover{background:var(--odoo-light);}
       <div class="card">
         <div class="formrow" style="margin-bottom:10px;align-items:center;">
           <button class="btn btn-gold voice-cmd-btn" id="btn-voice-stock" type="button">🎤 Commande vocale (ajouter / vendre un article)</button>
-          <div style="font-size:11px;color:var(--muted);max-width:360px;">Ex : « ajouter 10 savon rose à 500 francs » ou « vendre 2 riz parfumé ». Fonctionne aussi pour poser une question (« stock faible », « résumé du jour »…).</div>
+          <button class="btn btn-odoo" id="btn-copy-all-agence" type="button" onclick="askDuplicateAllArticles()">⇄ Copier tout le catalogue vers l'autre agence</button>
+          <div style="font-size:11px;color:var(--muted);max-width:360px;">Sélectionnez d'abord l'agence source (en haut), puis copiez tout son catalogue vers l'autre agence (stock initial à 0, à ajuster ensuite).</div>
         </div>
         <div class="formrow">
           <div class="field"><label>Code</label>
@@ -932,6 +933,16 @@ function txStore(name,mode='readonly'){return db.transaction(name,mode).objectSt
 function idbGetAll(name){return new Promise((res,rej)=>{const r=txStore(name).getAll();r.onsuccess=()=>res(r.result);r.onerror=rej;});}
 function idbPut(name,val){return new Promise((res,rej)=>{const r=txStore(name,'readwrite').put(val);r.onsuccess=()=>res();r.onerror=rej;});}
 function idbDelete(name,id){return new Promise((res,rej)=>{const r=txStore(name,'readwrite').delete(id);r.onsuccess=()=>res();r.onerror=rej;});}
+function bulkPutArticles(items){
+  return new Promise((res,rej)=>{
+    if(!items.length){ res(); return; }
+    const tx=db.transaction('articles','readwrite');
+    const store=tx.objectStore('articles');
+    items.forEach(it=>store.put(it));
+    tx.oncomplete=()=>res();
+    tx.onerror=()=>rej(tx.error);
+  });
+}
 
 /* ============== STATE ============== */
 const CATEGORIES=['VENTE GENERALE','COSMETIQUE','PRÊT A PORTER','TEL ACCESSOIRES','INFORMATIQUE'];
@@ -1853,6 +1864,33 @@ async function askDuplicateArticle(id){
   articles.push(copy); await safePut('articles',copy);
   toast(`Article copié vers ${target} (stock initial : 0).`);
   renderStockTable();
+}
+async function askDuplicateAllArticles(){
+  if(adminAgenceFilter==='ALL'){
+    toast("Sélectionnez d'abord une agence source (en haut) avant de copier tout le catalogue.");
+    return;
+  }
+  const source=adminAgenceFilter;
+  const target=AGENCES.find(ag=>ag!==source);
+  if(!target){ toast("Aucune autre agence disponible."); return; }
+  const sourceArticles=articles.filter(a=>a.agence===source);
+  if(!sourceArticles.length){ toast(`${source} n'a aucun article à copier.`); return; }
+  const existingCodes=new Set(articles.filter(a=>a.agence===target).map(a=>a.code));
+  const toCopy=sourceArticles.filter(a=>!existingCodes.has(a.code));
+  const skipped=sourceArticles.length-toCopy.length;
+  if(!toCopy.length){ toast(`${target} possède déjà tous les articles de ${source}.`); return; }
+  const msg=`Copier ${toCopy.length} article(s) de ${source} vers ${target} ?\n(Stock initial à 0 pour ${target} — à ajuster ensuite.)`
+    + (skipped ? `\n${skipped} article(s) déjà présents seront ignorés.` : '');
+  if(!confirm(msg)) return;
+  const copies=toCopy.map(a=>({id:uid(),code:a.code,desig:a.desig,categorie:a.categorie,agence:target,qte:0,pa:a.pa,pv:a.pv,seuil:a.seuil}));
+  try{
+    await bulkPutArticles(copies);
+    articles.push(...copies);
+    toast(`${copies.length} article(s) copié(s) vers ${target}.` + (skipped?` (${skipped} déjà existants ignorés)`:''));
+    renderStockTable();
+  }catch(e){
+    toast("Erreur lors de la copie en masse. Réessayez.");
+  }
 }
 /* ---- EDITION ARTICLE (STOCK) ---- */
 let editingArticleId=null;
