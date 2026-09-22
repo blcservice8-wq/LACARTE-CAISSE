@@ -420,6 +420,13 @@ tbody tr:hover{background:var(--odoo-light);}
 .field label{font-size:10.3px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:700;}
 .field input,.field select{font-size:13px;padding:8px 10px;border:1px solid var(--field-border);border-radius:6px;background:var(--surface);color:var(--ink);min-width:118px;}
 .field input:focus,.field select:focus{outline:2px solid var(--odoo);outline-offset:1px;border-color:var(--odoo);}
+.mic-row{display:flex;gap:4px;align-items:center;}
+.mic-row input{flex:1;min-width:0;}
+.mic-btn{flex:0 0 auto;border:1px solid var(--field-border);background:var(--surface);color:var(--ink);border-radius:6px;padding:0 9px;height:34px;cursor:pointer;font-size:14px;line-height:1;}
+.mic-btn:hover{border-color:var(--odoo);}
+.mic-btn.listening{background:var(--red,#B4231F);color:#fff;border-color:var(--red,#B4231F);animation:mic-pulse 1s ease-in-out infinite;}
+@keyframes mic-pulse{0%,100%{opacity:1;}50%{opacity:.55;}}
+.voice-cmd-btn{display:inline-flex;align-items:center;gap:6px;}
 
 .modal-bg{position:fixed;inset:0;background:rgba(22,20,24,.5);display:none;align-items:center;justify-content:center;z-index:60;padding:20px;}
 .modal-bg.show{display:flex;}
@@ -534,7 +541,7 @@ tbody tr:hover{background:var(--odoo-light);}
     <div class="pos-cats" id="pos-cats"></div>
     <div class="pos-center">
       <div class="pos-search"><input id="pos-search" placeholder="🔍 Rechercher un article ou un code…"></div>
-      <div class="pos-grid-wrap"><div class="pos-grid" id="pos-grid"></div></div>
+      <div class="pos-grid-wrap"><div class="pos-grid"></div></div>
     </div>
     <div class="pos-cart">
       <div class="pos-cart-head"><b>Ticket en cours</b><button class="clr" id="pos-clear">Vider</button></div>
@@ -597,6 +604,7 @@ tbody tr:hover{background:var(--odoo-light);}
         <button data-view="stock">Stock</button>
         <button data-view="historique">Historique</button>
         <button data-view="personnel">Personnel</button>
+        <button data-view="assistant">Assistant IA</button>
       </div>
     </div>
     <div class="right">
@@ -608,8 +616,14 @@ tbody tr:hover{background:var(--odoo-light);}
   </div>
 
   <div class="odoo-sub">
-    <h1 id="admin-title">Tableau de bord</h1>
-    <div class="crumbs" id="admin-date"></div>
+    <div>
+      <h1 id="admin-title">Tableau de bord</h1>
+      <div class="crumbs" id="admin-date"></div>
+    </div>
+    <div class="field" style="min-width:230px;margin:0;">
+      <label style="font-size:11px;">Agence (filtre global)</label>
+      <select id="admin-agence-filter"></select>
+    </div>
   </div>
 
   <div class="odoo-main">
@@ -675,7 +689,7 @@ tbody tr:hover{background:var(--odoo-light);}
       </div>
       <h2 class="sec">Historique des entrées</h2>
       <div class="card" style="padding:0;overflow:auto;">
-        <table><thead><tr><th>Date</th><th>Code</th><th>Désignation</th><th>Service</th><th>Qté</th><th>P.Vente</th><th>Total</th><th>Fournisseur</th></tr></thead>
+        <table><thead><tr><th>Agence</th><th>Date</th><th>Code</th><th>Désignation</th><th>Service</th><th>Qté</th><th>P.Vente</th><th>Total</th><th>Fournisseur</th></tr></thead>
         <tbody id="achat-body"></tbody></table>
         <div class="panel-empty" id="achat-empty" style="display:none;">Aucune entrée enregistrée.</div>
       </div>
@@ -684,23 +698,41 @@ tbody tr:hover{background:var(--odoo-light);}
     <!-- STOCK -->
     <div id="av-stock" class="hidden">
       <div class="card">
+        <div class="formrow" style="margin-bottom:10px;align-items:center;">
+          <button class="btn btn-gold voice-cmd-btn" id="btn-voice-stock" type="button">🎤 Commande vocale (ajouter / vendre un article)</button>
+          <div style="font-size:11px;color:var(--muted);max-width:360px;">Ex : « ajouter 10 savon rose à 500 francs » ou « vendre 2 riz parfumé ». Fonctionne aussi pour poser une question (« stock faible », « résumé du jour »…).</div>
+        </div>
         <div class="formrow">
-          <div class="field"><label>Code</label><input id="s-code" placeholder="ex: 010102/COS"></div>
-          <div class="field"><label>Désignation</label><input id="s-desig" placeholder="Nom article"></div>
+          <div class="field"><label>Code</label>
+            <div class="mic-row"><input id="s-code" placeholder="ex: 010102/COS"><button type="button" class="mic-btn" onclick="startDictation('s-code',this)" title="Dicter">🎤</button></div>
+          </div>
+          <div class="field"><label>Désignation</label>
+            <div class="mic-row"><input id="s-desig" placeholder="Nom article"><button type="button" class="mic-btn" onclick="startDictation('s-desig',this)" title="Dicter">🎤</button></div>
+          </div>
           <div class="field" style="min-width:150px;"><label>Service</label><select id="s-cat"></select></div>
-          <div class="field" style="width:100px;"><label>Qté init.</label><input type="number" id="s-qte" value="0" min="0"></div>
-          <div class="field" style="width:100px;"><label>Prix achat</label><input type="number" id="s-pa" min="0"></div>
-          <div class="field" style="width:100px;"><label>Prix vente</label><input type="number" id="s-pv" min="0"></div>
-          <div class="field" style="width:90px;"><label>Seuil</label><input type="number" id="s-seuil" value="3" min="0"></div>
+          <div class="field" style="width:100px;"><label>Qté init.</label>
+            <div class="mic-row"><input type="number" id="s-qte" value="0" min="0"><button type="button" class="mic-btn" onclick="startDictation('s-qte',{numeric:true},this)" title="Dicter">🎤</button></div>
+          </div>
+          <div class="field" style="width:100px;"><label>Prix achat</label>
+            <div class="mic-row"><input type="number" id="s-pa" min="0"><button type="button" class="mic-btn" onclick="startDictation('s-pa',{numeric:true},this)" title="Dicter">🎤</button></div>
+          </div>
+          <div class="field" style="width:100px;"><label>Prix vente</label>
+            <div class="mic-row"><input type="number" id="s-pv" min="0"><button type="button" class="mic-btn" onclick="startDictation('s-pv',{numeric:true},this)" title="Dicter">🎤</button></div>
+          </div>
+          <div class="field" style="width:90px;"><label>Seuil</label>
+            <div class="mic-row"><input type="number" id="s-seuil" value="3" min="0"><button type="button" class="mic-btn" onclick="startDictation('s-seuil',{numeric:true},this)" title="Dicter">🎤</button></div>
+          </div>
           <button class="btn btn-odoo" id="btn-add-article">Ajouter article</button>
         </div>
       </div>
       <div class="formrow" style="margin-top:14px;">
         <div class="field" style="min-width:180px;"><label>Filtrer par service</label><select id="stock-filter"></select></div>
-        <div class="field" style="min-width:200px;"><label>Recherche</label><input id="stock-search" placeholder="Nom ou code…"></div>
+        <div class="field" style="min-width:200px;"><label>Recherche</label>
+          <div class="mic-row"><input id="stock-search" placeholder="Nom ou code…"><button type="button" class="mic-btn" onclick="startDictation('stock-search',this)" title="Dicter">🎤</button></div>
+        </div>
       </div>
       <div class="card" style="padding:0;overflow:auto;">
-        <table><thead><tr><th>Code</th><th>Désignation</th><th>Service</th><th>Stock</th><th>P.Achat</th><th>P.Vente</th><th>Statut</th><th></th></tr></thead>
+        <table><thead><tr><th>Agence</th><th>Code</th><th>Désignation</th><th>Service</th><th>Stock</th><th>P.Achat</th><th>P.Vente</th><th>Statut</th><th></th></tr></thead>
         <tbody id="stock-body"></tbody></table>
         <div class="panel-empty" id="stock-empty" style="display:none;">Aucun article.</div>
       </div>
@@ -710,13 +742,13 @@ tbody tr:hover{background:var(--odoo-light);}
     <div id="av-historique" class="hidden">
       <div class="grid g3" id="hist-stats"></div>
       <div class="card" style="padding:0;overflow:auto;margin-top:14px;">
-        <table><thead><tr><th>Date</th><th>Heure</th><th>Désignation</th><th>Service</th><th>Qté</th><th>P.U.</th><th>Total</th><th>Paiement</th><th>Caissier</th><th>Actions</th></tr></thead>
+        <table><thead><tr><th>Agence</th><th>Date</th><th>Heure</th><th>Désignation</th><th>Service</th><th>Qté</th><th>P.U.</th><th>Total</th><th>Paiement</th><th>Caissier</th><th>Actions</th></tr></thead>
         <tbody id="hist-body"></tbody></table>
         <div class="panel-empty" id="hist-empty" style="display:none;">Aucune vente enregistrée.</div>
       </div>
       <h2 class="sec">Versements de caisse</h2>
       <div class="card" style="padding:0;overflow:auto;">
-        <table><thead><tr><th>Date</th><th>Heure</th><th>Caissier</th><th>Montant</th><th>Note</th></tr></thead>
+        <table><thead><tr><th>Agence</th><th>Date</th><th>Heure</th><th>Caissier</th><th>Montant</th><th>Note</th></tr></thead>
         <tbody id="vers-admin-body"></tbody></table>
         <div class="panel-empty" id="vers-admin-empty" style="display:none;">Aucun versement enregistré.</div>
       </div>
@@ -741,6 +773,36 @@ tbody tr:hover{background:var(--odoo-light);}
         <table><thead><tr><th>Nom</th><th>Code d'accès</th><th>Agence</th><th></th></tr></thead>
         <tbody id="gerants-body"></tbody></table>
         <div class="panel-empty" id="gerants-empty" style="display:none;">Aucun gérant enregistré.</div>
+      </div>
+    </div>
+
+    <!-- ASSISTANT IA -->
+    <div id="av-assistant" class="hidden">
+      <div class="card" style="margin-bottom:14px;">
+        <div style="font-size:13px;color:var(--muted);line-height:1.5;">
+          Posez une question sur vos ventes, votre stock ou votre caisse — l'assistant répond à partir de vos données réelles.
+          <span id="assist-mode-tag" style="font-weight:700;"></span>
+        </div>
+        <div class="formrow" style="margin-top:10px;align-items:flex-end;">
+          <div class="field" style="min-width:220px;"><label>Adresse du service IA (optionnel)</label>
+            <input id="assist-endpoint" placeholder="https://mon-relais-ia.example.com"></div>
+          <button class="btn btn-ghost" id="assist-endpoint-save">Enregistrer</button>
+          <div style="font-size:11px;color:var(--muted);max-width:340px;">Laissez vide pour utiliser l'assistant intégré (sans IA externe, sans clé, 100% hors-ligne). Renseignez une URL le jour où vous aurez un service relais connecté à une vraie IA.</div>
+        </div>
+      </div>
+      <div class="card" style="padding:0;overflow:hidden;display:flex;flex-direction:column;height:60vh;min-height:420px;">
+        <div id="assist-log" style="flex:1;overflow:auto;padding:16px;display:flex;flex-direction:column;gap:10px;"></div>
+        <div style="display:flex;gap:8px;padding:12px;border-top:1px solid #EFEAF0;">
+          <input id="assist-input" placeholder="ex : combien avons-nous vendu aujourd'hui ?" style="flex:1;">
+          <button class="btn btn-odoo" id="assist-send">Envoyer</button>
+        </div>
+        <div class="dash-filters" style="padding:0 12px 12px;">
+          <button class="dash-filter-chip" data-q="Quel est le total des ventes aujourd'hui ?">CA du jour</button>
+          <button class="dash-filter-chip" data-q="Quels articles sont en stock faible ?">Stock faible</button>
+          <button class="dash-filter-chip" data-q="Quel est le meilleur article ce mois-ci ?">Meilleur article</button>
+          <button class="dash-filter-chip" data-q="Résumé de la journée">Résumé du jour</button>
+          <button class="dash-filter-chip" data-q="Que dois-je réapprovisionner ?">Réappro à faire</button>
+        </div>
       </div>
     </div>
   </div>
@@ -774,6 +836,69 @@ tbody tr:hover{background:var(--odoo-light);}
     <div class="row">
       <button class="btn btn-ghost" id="ev-cancel">Annuler</button>
       <button class="btn btn-odoo" id="ev-save">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="edit-article-bg">
+  <div class="modal">
+    <h3>Modifier l'article</h3>
+    <div class="formrow">
+      <div class="field"><label>Code</label>
+        <div class="mic-row"><input id="ea-code" placeholder="ex: 010102/COS"><button type="button" class="mic-btn" onclick="startDictation('ea-code',this)" title="Dicter">🎤</button></div>
+      </div>
+      <div class="field"><label>Désignation</label>
+        <div class="mic-row"><input id="ea-desig" placeholder="Nom article"><button type="button" class="mic-btn" onclick="startDictation('ea-desig',this)" title="Dicter">🎤</button></div>
+      </div>
+      <div class="field" style="min-width:150px;"><label>Service</label><select id="ea-cat"></select></div>
+      <div class="field" style="min-width:150px;"><label>Agence</label><select id="ea-agence"></select></div>
+    </div>
+    <div class="formrow">
+      <div class="field" style="width:100px;"><label>Quantité</label>
+        <div class="mic-row"><input type="number" id="ea-qte" min="0"><button type="button" class="mic-btn" onclick="startDictation('ea-qte',{numeric:true},this)" title="Dicter">🎤</button></div>
+      </div>
+      <div class="field" style="width:120px;"><label>Prix achat</label>
+        <div class="mic-row"><input type="number" id="ea-pa" min="0"><button type="button" class="mic-btn" onclick="startDictation('ea-pa',{numeric:true},this)" title="Dicter">🎤</button></div>
+      </div>
+      <div class="field" style="width:120px;"><label>Prix vente</label>
+        <div class="mic-row"><input type="number" id="ea-pv" min="0"><button type="button" class="mic-btn" onclick="startDictation('ea-pv',{numeric:true},this)" title="Dicter">🎤</button></div>
+      </div>
+      <div class="field" style="width:90px;"><label>Seuil</label>
+        <div class="mic-row"><input type="number" id="ea-seuil" min="0"><button type="button" class="mic-btn" onclick="startDictation('ea-seuil',{numeric:true},this)" title="Dicter">🎤</button></div>
+      </div>
+    </div>
+    <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">La quantité, les prix, le code et la désignation seront mis à jour partout dans l'application (caisse, ventes, achats, historique).</div>
+    <div class="row">
+      <button class="btn btn-ghost" id="ea-cancel">Annuler</button>
+      <button class="btn btn-odoo" id="ea-save">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="stock-mvt-bg">
+  <div class="modal">
+    <h3 id="mvt-title">Mouvement de stock</h3>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:10px;" id="mvt-desig-label"></div>
+    <div class="formrow">
+      <div class="field" style="width:100px;"><label>Quantité</label>
+        <div class="mic-row"><input type="number" id="mvt-qte" value="1" min="1"><button type="button" class="mic-btn" onclick="startDictation('mvt-qte',{numeric:true},this)" title="Dicter">🎤</button></div>
+      </div>
+      <div class="field" style="width:130px;"><label id="mvt-prix-label">Prix vente</label>
+        <div class="mic-row"><input type="number" id="mvt-prix" min="0"><button type="button" class="mic-btn" onclick="startDictation('mvt-prix',{numeric:true},this)" title="Dicter">🎤</button></div>
+      </div>
+      <div class="field" style="min-width:150px;" id="mvt-fourn-field">
+        <label>Fournisseur</label>
+        <div class="mic-row"><input id="mvt-fourn" placeholder="Optionnel"><button type="button" class="mic-btn" onclick="startDictation('mvt-fourn',this)" title="Dicter">🎤</button></div>
+      </div>
+      <div class="field" style="min-width:150px;" id="mvt-paiement-field">
+        <label>Paiement</label>
+        <select id="mvt-paiement"><option value="ESPECES">ESPECES</option><option value="ORANGE MONEY">ORANGE MONEY</option><option value="WAVE">WAVE</option><option value="CREDIT">CREDIT</option></select>
+      </div>
+    </div>
+    <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;" id="mvt-note">Le stock, le journal des achats/ventes et l'historique seront mis à jour automatiquement.</div>
+    <div class="row">
+      <button class="btn btn-ghost" id="mvt-cancel">Annuler</button>
+      <button class="btn btn-odoo" id="mvt-save">Enregistrer</button>
     </div>
   </div>
 </div>
@@ -870,6 +995,12 @@ let articles=[], ventes=[], achats=[], versements=[], gerants=[], ouvertures=[];
 let currentCashier='';
 let currentAgence='';
 const AGENCES=['BLC JAXAY','BLC NDIEMANE'];
+let adminAgenceFilter='ALL';
+function filteredArticles(){ return adminAgenceFilter==='ALL' ? articles : articles.filter(a=>a.agence===adminAgenceFilter); }
+function filteredVentes(){ return adminAgenceFilter==='ALL' ? ventes : ventes.filter(v=>v.agence===adminAgenceFilter); }
+function filteredAchats(){ return adminAgenceFilter==='ALL' ? achats : achats.filter(a=>a.agence===adminAgenceFilter); }
+function filteredVersements(){ return adminAgenceFilter==='ALL' ? versements : versements.filter(v=>v.agence===adminAgenceFilter); }
+function filteredGerants(){ return adminAgenceFilter==='ALL' ? gerants : gerants.filter(g=>g.agence===adminAgenceFilter); }
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 const fmt=n=>Math.round(n).toLocaleString('fr-FR');
 function shade(hex,pct){
@@ -895,6 +1026,12 @@ function fillCategorySelects(){
   const filt=document.getElementById('stock-filter');
   if(filt) filt.innerHTML=`<option value="ALL">Tous les services</option>`+CATEGORIES.map(c=>`<option value="${c}">${c}</option>`).join('');
 }
+function fillAgenceFilter(){
+  const el=document.getElementById('admin-agence-filter');
+  if(!el) return;
+  el.innerHTML='<option value="ALL">Toutes les agences</option>'+AGENCES.map(a=>`<option value="${a}">${a}</option>`).join('');
+  el.value=adminAgenceFilter;
+}
 
 /* ============== INIT ============== */
 async function init(){
@@ -910,9 +1047,14 @@ async function init(){
     console.warn('Échec de chargement IndexedDB, démarrage avec des listes vides.', e);
     articles=articles||[]; ventes=ventes||[]; achats=achats||[]; versements=versements||[]; gerants=gerants||[]; ouvertures=ouvertures||[];
   }
+  /* Migration : les articles/achats créés avant l'ajout du suivi par agence
+     n'ont pas de champ "agence". On leur assigne l'agence par défaut afin que
+     le filtre global fonctionne correctement pour toutes les données existantes. */
+  for(const a of articles){ if(!a.agence){ a.agence=AGENCES[0]; await safePut('articles',a); } }
+  for(const a of achats){ if(!a.agence){ a.agence=AGENCES[0]; await safePut('achats',a); } }
   if(articles.length===0){
     for(const a of SEED_ARTICLES){
-      const art={id:uid(),code:a.code,desig:a.desig,categorie:a.categorie,qte:a.qte,pa:a.pa,pv:a.pv,seuil:a.seuil};
+      const art={id:uid(),code:a.code,desig:a.desig,categorie:a.categorie,qte:a.qte,pa:a.pa,pv:a.pv,seuil:a.seuil,agence:AGENCES[0]};
       articles.push(art); await safePut('articles',art);
     }
   }
@@ -927,8 +1069,10 @@ async function init(){
       {code:'070501/GEN',desig:'Saisie De Fiche De Versement',pv:300},
     ];
     for(const s of seedVente){
-      const art={id:uid(),code:s.code,desig:s.desig,categorie:'VENTE GENERALE',qte:999,pa:Math.round(s.pv*0.5),pv:s.pv,seuil:0};
-      articles.push(art); await safePut('articles',art);
+      for(const ag of AGENCES){
+        const art={id:uid(),code:s.code,desig:s.desig,categorie:'VENTE GENERALE',qte:999,pa:Math.round(s.pv*0.5),pv:s.pv,seuil:0,agence:ag};
+        articles.push(art); await safePut('articles',art);
+      }
     }
   }
   if(gerants.length===0){
@@ -939,6 +1083,7 @@ async function init(){
     for(const g of seedGerants){ gerants.push(g); await safePut('gerants',g); }
   }
   fillCategorySelects();
+  fillAgenceFilter();
   await initTheme();
   try{
     const r=await idbGet('settings','objectifMensuel');
@@ -1113,7 +1258,7 @@ function renderJournalTable(){
   const today=new Date().toISOString().slice(0,10);
   // Journal général de la journée : TOUTES les ventes réellement encaissées aujourd'hui,
   // peu importe le service d'origine de l'article (l'écran Vente Générale sert de vue globale).
-  const list=[...ventes].filter(v=>v.date===today)
+  const list=[...ventes].filter(v=>v.date===today && v.agence===currentAgence)
     .sort((a,b)=> (a.date+a.heure) < (b.date+b.heure) ? 1 : -1); // plus récent -> plus ancien
   let rows='';
   const dayTotal=list.reduce((s,v)=>s+v.total,0);
@@ -1154,11 +1299,12 @@ async function refreshJournal(btn){
 function renderPosGrid(){
   const q=document.getElementById('pos-search').value.trim().toLowerCase();
   const wrap=document.querySelector('.pos-grid-wrap');
+  const stockAgence=articles.filter(a=>a.agence===currentAgence);
   let list;
   if(q){
-    list=articles.filter(a=>a.desig.toLowerCase().includes(q)||a.code.toLowerCase().includes(q));
+    list=stockAgence.filter(a=>a.desig.toLowerCase().includes(q)||a.code.toLowerCase().includes(q));
   } else {
-    list=articles.filter(a=>a.categorie===posCat);
+    list=stockAgence.filter(a=>a.categorie===posCat);
   }
 
   // Le journal (alimenté directement par le tableau `ventes` = source unique des
@@ -1366,27 +1512,38 @@ document.getElementById('vers-save').addEventListener('click',async ()=>{
 /* ============================================================
    ADMIN — Odoo shell nav
    ============================================================ */
-const adminViews=['dashboard','vente','achat','stock','historique','personnel'];
-document.getElementById('appmenu').addEventListener('click',e=>{
-  const b=e.target.closest('button'); if(!b) return;
-  document.querySelectorAll('#appmenu button').forEach(x=>x.classList.remove('active'));
-  b.classList.add('active');
-  const v=b.dataset.view;
-  adminViews.forEach(x=>document.getElementById('av-'+x).classList.toggle('hidden',x!==v));
-  document.getElementById('admin-title').textContent=b.textContent;
+const adminViews=['dashboard','vente','achat','stock','historique','personnel','assistant'];
+let currentAdminView='dashboard';
+function renderActiveAdminView(v){
   if(v==='dashboard') renderDashboard();
   if(v==='vente'){ populateArticleSelect(document.getElementById('v-cat').value||CATEGORIES[0]); renderCartAdmin(); }
   if(v==='achat') renderAchatTable();
   if(v==='stock') renderStockTable();
   if(v==='historique') renderHistorique();
   if(v==='personnel') renderGerants();
+  if(v==='assistant') initAssistant();
+}
+document.getElementById('appmenu').addEventListener('click',e=>{
+  const b=e.target.closest('button'); if(!b) return;
+  document.querySelectorAll('#appmenu button').forEach(x=>x.classList.remove('active'));
+  b.classList.add('active');
+  const v=b.dataset.view;
+  currentAdminView=v;
+  adminViews.forEach(x=>document.getElementById('av-'+x).classList.toggle('hidden',x!==v));
+  document.getElementById('admin-title').textContent=b.textContent;
+  renderActiveAdminView(v);
+});
+document.getElementById('admin-agence-filter').addEventListener('change',e=>{
+  adminAgenceFilter=e.target.value;
+  renderActiveAdminView(currentAdminView);
 });
 
 /* ---- PERSONNEL (gérants de guichet) ---- */
 function renderGerants(){
   const body=document.getElementById('gerants-body');
-  document.getElementById('gerants-empty').style.display= gerants.length? 'none':'block';
-  body.innerHTML=gerants.map(g=>`<tr><td>${g.nom}</td><td style="font-family:var(--mono);">${g.code}</td><td>${g.agence||'—'}</td>
+  const list=filteredGerants();
+  document.getElementById('gerants-empty').style.display= list.length? 'none':'block';
+  body.innerHTML=list.map(g=>`<tr><td>${g.nom}</td><td style="font-family:var(--mono);">${g.code}</td><td>${g.agence||'—'}</td>
     <td><button class="btn btn-ghost btn-sm" onclick="askDeleteGerant('${g.id}')">Suppr.</button></td></tr>`).join('');
 }
 document.getElementById('btn-add-gerant').addEventListener('click',async ()=>{
@@ -1418,11 +1575,13 @@ function renderDashboard(){
   const today=todayStr();
   const startWeek=new Date(now); startWeek.setDate(now.getDate()-now.getDay()+1); startWeek.setHours(0,0,0,0);
   const startMonth=new Date(now.getFullYear(),now.getMonth(),1);
-  const vJour=ventes.filter(v=>v.date===today);
-  const vSemaine=ventes.filter(v=>new Date(v.date)>=startWeek);
-  const vMois=ventes.filter(v=>new Date(v.date)>=startMonth);
+  const ventesF=filteredVentes();
+  const articlesF=filteredArticles();
+  const vJour=ventesF.filter(v=>v.date===today);
+  const vSemaine=ventesF.filter(v=>new Date(v.date)>=startWeek);
+  const vMois=ventesF.filter(v=>new Date(v.date)>=startMonth);
   const sum=arr=>arr.reduce((s,v)=>s+v.total,0);
-  const lowStock=articles.filter(a=>a.qte<=a.seuil);
+  const lowStock=articlesF.filter(a=>a.qte<=a.seuil);
 
   document.getElementById('stat-cards').innerHTML=`
     <div class="kpi"><div class="k">Ventes aujourd'hui</div><div class="v">${fmt(sum(vJour))} F</div></div>
@@ -1517,7 +1676,7 @@ function renderBarChart(){
     const d=new Date(); d.setDate(d.getDate()-i);
     days.push(d.toISOString().slice(0,10));
   }
-  const filtered = dashCatFilter==='ALL' ? ventes : ventes.filter(v=>v.categorie===dashCatFilter);
+  const filtered = (dashCatFilter==='ALL' ? filteredVentes() : filteredVentes().filter(v=>v.categorie===dashCatFilter));
   const totals=days.map(d=>filtered.filter(v=>v.date===d).reduce((s,v)=>s+v.total,0));
   const max=Math.max(1,...totals);
   const W=760,H=220,padL=44,padB=28,padT=12,padR=8;
@@ -1557,7 +1716,12 @@ function renderBarChart(){
 let adminCart=[];
 function populateArticleSelect(cat){
   const sel=document.getElementById('v-article');
-  const list=articles.filter(a=>a.categorie===cat);
+  if(adminAgenceFilter==='ALL'){
+    sel.innerHTML=`<option value="">Sélectionnez une agence en haut</option>`;
+    updateVInfo();
+    return;
+  }
+  const list=articles.filter(a=>a.categorie===cat && a.agence===adminAgenceFilter);
   sel.innerHTML= list.length? list.map(a=>`<option value="${a.id}">${a.desig} — ${fmt(a.pv)} F (stock:${a.qte})</option>`).join('')
     : `<option value="">Aucun article dans ce service</option>`;
   updateVInfo();
@@ -1570,6 +1734,7 @@ function updateVInfo(){
   document.getElementById('v-info').textContent= a? `Code: ${a.code} · Stock disponible: ${a.qte}` : '';
 }
 document.getElementById('btn-add-vente').addEventListener('click',()=>{
+  if(adminAgenceFilter==='ALL'){toast("Sélectionnez une agence (en haut) avant d'ajouter une vente.");return;}
   const cat=document.getElementById('v-cat').value;
   const id=document.getElementById('v-article').value;
   const qte=parseInt(document.getElementById('v-qte').value)||0;
@@ -1579,7 +1744,7 @@ document.getElementById('btn-add-vente').addEventListener('click',()=>{
   if(qte<1){toast('Quantité invalide.');return;}
   const deja=adminCart.filter(c=>c.articleId===id).reduce((s,c)=>s+c.qte,0);
   if(deja+qte>a.qte){toast(`Stock insuffisant (disponible: ${a.qte}).`);return;}
-  adminCart.push({articleId:a.id,code:a.code,desig:a.desig,categorie:cat,qte,pu:a.pv,total:qte*a.pv,paiement});
+  adminCart.push({articleId:a.id,code:a.code,desig:a.desig,categorie:cat,qte,pu:a.pv,total:qte*a.pv,paiement,agence:a.agence});
   renderCartAdmin();
 });
 function renderCartAdmin(){
@@ -1595,7 +1760,7 @@ document.getElementById('btn-valider-vente').addEventListener('click',async ()=>
   const now=new Date(); const date=now.toISOString().slice(0,10); const heure=now.toTimeString().slice(0,5);
   for(const c of adminCart){
     const vente={id:uid(),date,heure,articleId:c.articleId,code:c.code,desig:c.desig,categorie:c.categorie,
-      qte:c.qte,pu:c.pu,total:c.total,paiement:c.paiement,caissier:'Gérant'};
+      qte:c.qte,pu:c.pu,total:c.total,paiement:c.paiement,caissier:'Gérant',agence:c.agence};
     ventes.push(vente); await safePut('ventes',vente);
     const a=articles.find(x=>x.id===c.articleId);
     if(a){a.qte-=c.qte; await safePut('articles',a);}
@@ -1609,11 +1774,13 @@ document.getElementById('btn-valider-vente').addEventListener('click',async ()=>
 /* ---- ACHAT ---- */
 function renderAchatTable(){
   const body=document.getElementById('achat-body');
-  document.getElementById('achat-empty').style.display= achats.length? 'none':'block';
-  body.innerHTML=[...achats].reverse().map(a=>`<tr><td>${a.date}</td><td>${a.code}</td><td>${a.desig}</td>
+  const list=filteredAchats();
+  document.getElementById('achat-empty').style.display= list.length? 'none':'block';
+  body.innerHTML=[...list].reverse().map(a=>`<tr><td>${a.agence||'—'}</td><td>${a.date}</td><td>${a.code}</td><td>${a.desig}</td>
     <td>${a.categorie}</td><td class="num">${a.qte}</td><td class="num">${fmt(a.pv)}</td><td class="num">${fmt(a.total)}</td><td>${a.fourn||'—'}</td></tr>`).join('');
 }
 document.getElementById('btn-add-achat').addEventListener('click',async ()=>{
+  if(adminAgenceFilter==='ALL'){toast("Sélectionnez une agence (en haut) avant d'enregistrer une entrée.");return;}
   const code=document.getElementById('a-code').value.trim();
   const desig=document.getElementById('a-desig').value.trim();
   const cat=document.getElementById('a-cat').value;
@@ -1621,11 +1788,11 @@ document.getElementById('btn-add-achat').addEventListener('click',async ()=>{
   const pv=parseFloat(document.getElementById('a-prix').value)||0;
   const fourn=document.getElementById('a-fourn').value.trim();
   if(!code||!desig||qte<1){toast('Renseignez code, désignation et quantité.');return;}
-  const achat={id:uid(),date:todayStr(),code,desig,categorie:cat,qte,pv,total:qte*pv,fourn};
+  const achat={id:uid(),date:todayStr(),code,desig,categorie:cat,qte,pv,total:qte*pv,fourn,agence:adminAgenceFilter};
   achats.push(achat); await safePut('achats',achat);
-  let a=articles.find(x=>x.code===code);
+  let a=articles.find(x=>x.code===code && x.agence===adminAgenceFilter);
   if(a){ a.qte+=qte; if(pv) a.pv=pv; }
-  else{ a={id:uid(),code,desig,categorie:cat,qte,pa:pv,pv,seuil:3}; articles.push(a); }
+  else{ a={id:uid(),code,desig,categorie:cat,qte,pa:pv,pv,seuil:3,agence:adminAgenceFilter}; articles.push(a); }
   await safePut('articles',a);
   ['a-code','a-desig','a-qte','a-prix','a-fourn'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('a-qte').value=1;
@@ -1635,6 +1802,7 @@ document.getElementById('btn-add-achat').addEventListener('click',async ()=>{
 
 /* ---- STOCK ---- */
 document.getElementById('btn-add-article').addEventListener('click',async ()=>{
+  if(adminAgenceFilter==='ALL'){toast("Sélectionnez une agence (en haut) avant d'ajouter un article.");return;}
   const code=document.getElementById('s-code').value.trim();
   const desig=document.getElementById('s-desig').value.trim();
   const cat=document.getElementById('s-cat').value;
@@ -1643,8 +1811,8 @@ document.getElementById('btn-add-article').addEventListener('click',async ()=>{
   const pv=parseFloat(document.getElementById('s-pv').value)||0;
   const seuil=parseInt(document.getElementById('s-seuil').value)||0;
   if(!code||!desig){toast('Code et désignation requis.');return;}
-  if(articles.some(a=>a.code===code)){toast('Ce code existe déjà.');return;}
-  const a={id:uid(),code,desig,categorie:cat,qte,pa,pv,seuil};
+  if(articles.some(a=>a.code===code && a.agence===adminAgenceFilter)){toast('Ce code existe déjà pour cette agence.');return;}
+  const a={id:uid(),code,desig,categorie:cat,qte,pa,pv,seuil,agence:adminAgenceFilter};
   articles.push(a); await safePut('articles',a);
   ['s-code','s-desig','s-pa','s-pv'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('s-qte').value=0; document.getElementById('s-seuil').value=3;
@@ -1656,18 +1824,131 @@ document.getElementById('stock-search').addEventListener('input',renderStockTabl
 function renderStockTable(){
   const filt=document.getElementById('stock-filter').value;
   const q=document.getElementById('stock-search').value.trim().toLowerCase();
-  let list=filt==='ALL'?articles:articles.filter(a=>a.categorie===filt);
+  let list=filteredArticles();
+  if(filt!=='ALL') list=list.filter(a=>a.categorie===filt);
   if(q) list=list.filter(a=>a.desig.toLowerCase().includes(q)||a.code.toLowerCase().includes(q));
   const body=document.getElementById('stock-body');
   document.getElementById('stock-empty').style.display= list.length? 'none':'block';
   body.innerHTML=list.map(a=>{
     const low=a.qte<=a.seuil;
-    return `<tr><td>${a.code}</td><td>${a.desig}</td><td>${a.categorie}</td><td class="num">${a.qte}</td>
+    return `<tr><td>${a.agence||'—'}</td><td>${a.code}</td><td>${a.desig}</td><td>${a.categorie}</td><td class="num">${a.qte}</td>
     <td class="num">${fmt(a.pa)}</td><td class="num">${fmt(a.pv)}</td>
     <td><span class="tag ${low?'low':''}">${low?'STOCK FAIBLE':'OK'}</span></td>
-    <td><button class="btn btn-ghost btn-sm" onclick="askDeleteArticle('${a.id}')">Suppr.</button></td></tr>`;
+    <td style="white-space:nowrap;">
+      <button class="btn btn-ghost btn-sm" onclick="askEditArticle('${a.id}')">Modifier</button>
+      <button class="btn btn-ghost btn-sm" onclick="askQuickMvt('${a.id}','achat')" title="Entrée de stock">+ Achat</button>
+      <button class="btn btn-ghost btn-sm" onclick="askQuickMvt('${a.id}','vente')" title="Sortie de stock">+ Vente</button>
+      <button class="btn btn-ghost btn-sm" onclick="askDuplicateArticle('${a.id}')" title="Copier vers l'autre agence">⇄ Copier</button>
+      <button class="btn btn-ghost btn-sm" onclick="askDeleteArticle('${a.id}')">Suppr.</button>
+    </td></tr>`;
   }).join('');
 }
+async function askDuplicateArticle(id){
+  const a=articles.find(x=>x.id===id);
+  if(!a) return;
+  const target=AGENCES.find(ag=>ag!==a.agence);
+  if(!target){ toast("Aucune autre agence disponible."); return; }
+  if(articles.some(x=>x.code===a.code && x.agence===target)){ toast(`Cet article existe déjà pour ${target}.`); return; }
+  const copy={id:uid(),code:a.code,desig:a.desig,categorie:a.categorie,agence:target,qte:0,pa:a.pa,pv:a.pv,seuil:a.seuil};
+  articles.push(copy); await safePut('articles',copy);
+  toast(`Article copié vers ${target} (stock initial : 0).`);
+  renderStockTable();
+}
+/* ---- EDITION ARTICLE (STOCK) ---- */
+let editingArticleId=null;
+function askEditArticle(id){
+  const a=articles.find(x=>x.id===id);
+  if(!a) return;
+  editingArticleId=id;
+  document.getElementById('ea-code').value=a.code;
+  document.getElementById('ea-desig').value=a.desig;
+  document.getElementById('ea-cat').innerHTML=CATEGORIES.map(c=>`<option value="${c}" ${c===a.categorie?'selected':''}>${c}</option>`).join('');
+  document.getElementById('ea-agence').innerHTML=AGENCES.map(ag=>`<option value="${ag}" ${ag===a.agence?'selected':''}>${ag}</option>`).join('');
+  document.getElementById('ea-qte').value=a.qte;
+  document.getElementById('ea-pa').value=a.pa;
+  document.getElementById('ea-pv').value=a.pv;
+  document.getElementById('ea-seuil').value=a.seuil;
+  document.getElementById('edit-article-bg').classList.add('show');
+}
+document.getElementById('ea-cancel').addEventListener('click',()=>{
+  document.getElementById('edit-article-bg').classList.remove('show'); editingArticleId=null;
+});
+document.getElementById('ea-save').addEventListener('click', async ()=>{
+  const a=articles.find(x=>x.id===editingArticleId);
+  if(!a){ document.getElementById('edit-article-bg').classList.remove('show'); return; }
+  const newCode=document.getElementById('ea-code').value.trim();
+  const newDesig=document.getElementById('ea-desig').value.trim();
+  const newCat=document.getElementById('ea-cat').value;
+  const newAgence=document.getElementById('ea-agence').value;
+  const newQte=parseInt(document.getElementById('ea-qte').value)||0;
+  const newPa=parseFloat(document.getElementById('ea-pa').value)||0;
+  const newPv=parseFloat(document.getElementById('ea-pv').value)||0;
+  const newSeuil=parseInt(document.getElementById('ea-seuil').value)||0;
+  if(!newCode||!newDesig){toast('Code et désignation requis.');return;}
+  if(newQte<0){toast('Quantité invalide.');return;}
+  if(articles.some(x=>x.code===newCode && x.agence===newAgence && x.id!==a.id)){toast('Ce code existe déjà pour cette agence.');return;}
+  a.code=newCode; a.desig=newDesig; a.categorie=newCat; a.agence=newAgence; a.qte=newQte; a.pa=newPa; a.pv=newPv; a.seuil=newSeuil;
+  await safePut('articles',a);
+  toast('Article modifié. Stock mis à jour partout.');
+  document.getElementById('edit-article-bg').classList.remove('show');
+  editingArticleId=null;
+  renderStockTable();
+  if(document.getElementById('cat-cards')) renderDashboard();
+  if(document.getElementById('pos-search')) renderPosGrid();
+});
+
+/* ---- MOUVEMENT RAPIDE DE STOCK (ACHAT / VENTE DEPUIS LE STOCK) ---- */
+let mvtArticleId=null, mvtType=null;
+function askQuickMvt(id,type){
+  const a=articles.find(x=>x.id===id);
+  if(!a) return;
+  mvtArticleId=id; mvtType=type;
+  document.getElementById('mvt-title').textContent = type==='achat' ? 'Entrée de stock (Achat)' : 'Sortie de stock (Vente)';
+  document.getElementById('mvt-desig-label').textContent = `${a.desig} — Code: ${a.code} · Catégorie: ${a.categorie} · Stock actuel: ${a.qte}`;
+  document.getElementById('mvt-qte').value=1;
+  document.getElementById('mvt-prix-label').textContent = 'Prix vente';
+  document.getElementById('mvt-prix').value=a.pv;
+  document.getElementById('mvt-fourn-field').style.display = type==='achat' ? '' : 'none';
+  document.getElementById('mvt-paiement-field').style.display = type==='vente' ? '' : 'none';
+  document.getElementById('mvt-fourn').value='';
+  document.getElementById('stock-mvt-bg').classList.add('show');
+}
+document.getElementById('mvt-cancel').addEventListener('click',()=>{
+  document.getElementById('stock-mvt-bg').classList.remove('show'); mvtArticleId=null; mvtType=null;
+});
+document.getElementById('mvt-save').addEventListener('click', async ()=>{
+  const a=articles.find(x=>x.id===mvtArticleId);
+  if(!a){ document.getElementById('stock-mvt-bg').classList.remove('show'); return; }
+  const qte=parseInt(document.getElementById('mvt-qte').value)||0;
+  const prix=parseFloat(document.getElementById('mvt-prix').value)||0;
+  if(qte<1){toast('Quantité invalide.');return;}
+  if(mvtType==='achat'){
+    const fourn=document.getElementById('mvt-fourn').value.trim();
+    const achat={id:uid(),date:todayStr(),code:a.code,desig:a.desig,categorie:a.categorie,qte,pv:prix,total:qte*prix,fourn,agence:a.agence};
+    achats.push(achat); await safePut('achats',achat);
+    a.qte+=qte; if(prix) a.pv=prix;
+    await safePut('articles',a);
+    if(document.getElementById('achat-body')) renderAchatTable();
+    toast('Achat enregistré. Stock mis à jour.');
+  } else {
+    if(qte>a.qte){toast(`Stock insuffisant (disponible: ${a.qte}).`);return;}
+    const paiement=document.getElementById('mvt-paiement').value;
+    const now=new Date(); const date=now.toISOString().slice(0,10); const heure=now.toTimeString().slice(0,5);
+    const vente={id:uid(),date,heure,articleId:a.id,code:a.code,desig:a.desig,categorie:a.categorie,
+      qte,pu:prix,total:qte*prix,paiement,caissier:'Gérant',agence:a.agence};
+    ventes.push(vente); await safePut('ventes',vente);
+    a.qte-=qte;
+    await safePut('articles',a);
+    if(document.getElementById('hist-body')) refreshAfterVenteChange();
+    toast('Vente enregistrée. Stock mis à jour.');
+  }
+  document.getElementById('stock-mvt-bg').classList.remove('show');
+  mvtArticleId=null; mvtType=null;
+  renderStockTable();
+  if(document.getElementById('cat-cards')) renderDashboard();
+  if(document.getElementById('pos-search')) renderPosGrid();
+});
+
 let pendingDelete=null;
 function askDeleteArticle(id){
   pendingDelete={type:'article',id};
@@ -1704,25 +1985,27 @@ document.getElementById('modal-confirm').addEventListener('click',async ()=>{
 /* ---- HISTORIQUE ---- */
 function renderHistorique(){
   const today=todayStr();
-  const vJour=ventes.filter(v=>v.date===today);
+  const ventesF=filteredVentes();
+  const vJour=ventesF.filter(v=>v.date===today);
   document.getElementById('hist-stats').innerHTML=`
     <div class="card"><div style="font-size:10.5px;color:var(--muted);font-weight:700;">TRANSACTIONS AUJOURD'HUI</div>
       <div style="font-family:var(--mono);font-size:20px;font-weight:700;color:var(--odoo);">${vJour.length}</div></div>
     <div class="card"><div style="font-size:10.5px;color:var(--muted);font-weight:700;">TOTAL AUJOURD'HUI</div>
       <div style="font-family:var(--mono);font-size:20px;font-weight:700;color:var(--odoo);">${fmt(vJour.reduce((s,v)=>s+v.total,0))} F</div></div>
     <div class="card"><div style="font-size:10.5px;color:var(--muted);font-weight:700;">TOTAL GÉNÉRAL</div>
-      <div style="font-family:var(--mono);font-size:20px;font-weight:700;color:var(--odoo);">${fmt(ventes.reduce((s,v)=>s+v.total,0))} F</div></div>
+      <div style="font-family:var(--mono);font-size:20px;font-weight:700;color:var(--odoo);">${fmt(ventesF.reduce((s,v)=>s+v.total,0))} F</div></div>
   `;
   const body=document.getElementById('hist-body');
-  document.getElementById('hist-empty').style.display= ventes.length? 'none':'block';
-  body.innerHTML=[...ventes].reverse().slice(0,300).map(v=>`<tr><td>${v.date}</td><td>${v.heure}</td><td>${v.desig}</td>
+  document.getElementById('hist-empty').style.display= ventesF.length? 'none':'block';
+  body.innerHTML=[...ventesF].reverse().slice(0,300).map(v=>`<tr><td>${v.agence||'—'}</td><td>${v.date}</td><td>${v.heure}</td><td>${v.desig}</td>
     <td>${v.categorie}</td><td class="num">${v.qte}</td><td class="num">${fmt(v.pu)}</td><td class="num">${fmt(v.total)}</td><td>${v.paiement}</td><td>${v.caissier||'—'}</td>
     <td><button class="btn btn-ghost btn-sm" onclick="askEditVente('${v.id}')">Modifier</button>
         <button class="btn btn-ghost btn-sm" style="color:var(--red);" onclick="askDeleteVente('${v.id}')">Supprimer</button></td></tr>`).join('');
 
+  const versementsF=filteredVersements();
   const vbody=document.getElementById('vers-admin-body');
-  document.getElementById('vers-admin-empty').style.display= versements.length? 'none':'block';
-  vbody.innerHTML=[...versements].reverse().slice(0,200).map(v=>`<tr><td>${v.date}</td><td>${v.heure}</td>
+  document.getElementById('vers-admin-empty').style.display= versementsF.length? 'none':'block';
+  vbody.innerHTML=[...versementsF].reverse().slice(0,200).map(v=>`<tr><td>${v.agence||'—'}</td><td>${v.date}</td><td>${v.heure}</td>
     <td>${v.caissier}</td><td class="num">${fmt(v.montant)} F</td><td>${v.note||'—'}</td></tr>`).join('');
 }
 
@@ -1789,6 +2072,359 @@ document.getElementById('ev-save').addEventListener('click', async ()=>{
   editingVenteId=null;
   refreshAfterVenteChange();
 });
+
+/* ============================================================
+   SAISIE VOCALE — remplissage/édition du stock à la voix
+   (Web Speech API du navigateur, aucune clé ni service externe ;
+   fonctionne sur Chrome Android/desktop. Se dégrade proprement si
+   le navigateur ne supporte pas la reconnaissance vocale.)
+   ============================================================ */
+
+function speechRecognitionCtor(){
+  return window.SpeechRecognition || window.webkitSpeechRecognition || null;
+}
+
+/* Convertit un nombre énoncé en français ("vingt-cinq", "cent", "deux mille cinq
+   cents") en chiffre. Se contente d'extraire les chiffres si l'API les a déjà
+   transcrits (cas le plus fréquent sur Chrome). */
+function parseSpokenNumber(text){
+  const cleaned=text.toLowerCase().replace(/[,.]/g,' ').replace(/francs?|cfa|f\b|unités?|pièces?|articles?/g,' ').trim();
+  const digitMatch=cleaned.replace(/\s+/g,'').match(/\d+/);
+  if(digitMatch) return digitMatch[0];
+  const UNITS={'zéro':0,'zero':0,'un':1,'une':1,'deux':2,'trois':3,'quatre':4,'cinq':5,'six':6,'sept':7,'huit':8,'neuf':9,
+    'dix':10,'onze':11,'douze':12,'treize':13,'quatorze':14,'quinze':15,'seize':16,
+    'vingt':20,'trente':30,'quarante':40,'cinquante':50,'soixante':60,
+    'cent':100,'cents':100,'mille':1000};
+  const words=cleaned.split(/[\s-]+/).filter(Boolean);
+  if(!words.length) return text;
+  let total=0, current=0, matchedAny=false;
+  words.forEach(w=>{
+    if(w==='et') return;
+    if(!(w in UNITS)){ return; }
+    matchedAny=true;
+    const val=UNITS[w];
+    if(val===100){ current=(current||1)*100; }
+    else if(val===1000){ total+=(current||1)*1000; current=0; }
+    else { current+=val; }
+  });
+  total+=current;
+  return matchedAny ? String(total) : text;
+}
+
+let activeRecognition=null;
+function startDictation(targetInputId, opts, btnEl){
+  opts=opts||{};
+  const Ctor=speechRecognitionCtor();
+  const btn=btnEl||null;
+  if(!Ctor){
+    toast("Dictée vocale non disponible sur ce navigateur (utilisez Chrome).");
+    return;
+  }
+  if(activeRecognition){ try{ activeRecognition.stop(); }catch(e){} }
+  const rec=new Ctor();
+  rec.lang='fr-FR';
+  rec.interimResults=false;
+  rec.maxAlternatives=1;
+  activeRecognition=rec;
+  if(btn) btn.classList.add('listening');
+  rec.onresult=(e)=>{
+    let text=(e.results[0][0].transcript||'').trim();
+    if(opts.numeric) text=parseSpokenNumber(text);
+    const el=document.getElementById(targetInputId);
+    if(el){ el.value=text; el.dispatchEvent(new Event('input')); }
+    if(opts.onResult) opts.onResult(text);
+  };
+  rec.onerror=(e)=>{
+    if(e.error==='no-speech') toast("Je n'ai rien entendu, réessayez.");
+    else if(e.error==='not-allowed'||e.error==='service-not-allowed') toast("Accès au micro refusé.");
+    else toast("Erreur de reconnaissance vocale.");
+  };
+  rec.onend=()=>{ if(btn) btn.classList.remove('listening'); if(activeRecognition===rec) activeRecognition=null; };
+  try{ rec.start(); }catch(e){ if(btn) btn.classList.remove('listening'); }
+}
+
+/* Normalise pour comparaison (minuscule, sans accents) */
+function normText(s){
+  return (s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
+}
+
+/* Trouve le meilleur article correspondant à un nom dicté, dans l'agence
+   actuellement filtrée (ou toutes agences si aucun filtre). */
+function findArticleByVoice(desig){
+  const q=normText(desig);
+  if(!q) return null;
+  const pool=filteredArticles();
+  let best=null, bestScore=-1;
+  pool.forEach(a=>{
+    const nd=normText(a.desig);
+    let score=-1;
+    if(nd===q) score=100;
+    else if(nd.includes(q)||q.includes(nd)) score=60+Math.min(nd.length,q.length);
+    else {
+      const qWords=q.split(/\s+/);
+      const hit=qWords.filter(w=>w.length>2 && nd.includes(w)).length;
+      if(hit>0) score=hit*10;
+    }
+    if(score>bestScore){ bestScore=score; best=a; }
+  });
+  return bestScore>=10 ? best : null;
+}
+
+/* Commande vocale unique pour le Stock : "ajouter 10 savon rose à 500 francs",
+   "vendre 2 riz parfumé", ou une simple question routée vers l'assistant local. */
+document.getElementById('btn-voice-stock').addEventListener('click', ()=>{
+  const Ctor=speechRecognitionCtor();
+  if(!Ctor){ toast("Dictée vocale non disponible sur ce navigateur (utilisez Chrome)."); return; }
+  if(activeRecognition){ try{ activeRecognition.stop(); }catch(e){} }
+  const rec=new Ctor();
+  rec.lang='fr-FR'; rec.interimResults=false; rec.maxAlternatives=1;
+  activeRecognition=rec;
+  const btn=document.getElementById('btn-voice-stock');
+  btn.classList.add('listening');
+  toast('🎤 Je vous écoute…');
+  rec.onresult=(e)=>{
+    const phrase=(e.results[0][0].transcript||'').trim();
+    handleVoiceStockCommand(phrase);
+  };
+  rec.onerror=()=>{ toast("Je n'ai pas compris, réessayez."); };
+  rec.onend=()=>{ btn.classList.remove('listening'); if(activeRecognition===rec) activeRecognition=null; };
+  try{ rec.start(); }catch(e){ btn.classList.remove('listening'); }
+});
+
+function handleVoiceStockCommand(phrase){
+  const p=normText(phrase);
+  toast(`🎤 « ${phrase} »`);
+
+  // "ajouter/ajoute X <désignation> [à/a] Y [francs]" -> entrée de stock (achat)
+  let m=p.match(/^(?:ajoute|ajouter|entree|entrer|achete|acheter)\s+(\d+|[a-z\s-]+?)\s+(.+?)(?:\s+(?:a|à)\s+(\d+|[a-z\s-]+?)\s*(?:francs?|cfa|f)?)?$/);
+  if(m){
+    const qte=parseInt(parseSpokenNumber(m[1]))||1;
+    const desig=m[2].trim();
+    const prix=m[3]?parseInt(parseSpokenNumber(m[3])):null;
+    const art=findArticleByVoice(desig);
+    if(art){
+      askQuickMvt(art.id,'achat');
+      document.getElementById('mvt-qte').value=qte;
+      if(prix!==null) document.getElementById('mvt-prix').value=prix;
+      toast(`Article trouvé : ${art.desig}. Vérifiez et enregistrez.`);
+    } else {
+      const stockBtn=document.querySelector('#appmenu button[data-view="stock"]');
+      if(stockBtn) stockBtn.click();
+      document.getElementById('s-desig').value=desig.charAt(0).toUpperCase()+desig.slice(1);
+      document.getElementById('s-qte').value=qte;
+      if(prix!==null) document.getElementById('s-pv').value=prix;
+      toast(`Article inconnu : complétez le code et le service pour "${desig}".`);
+    }
+    return;
+  }
+
+  // "vendre/vends X <désignation>" -> sortie de stock (vente)
+  m=p.match(/^(?:vend|vendre|vends)\s+(\d+|[a-z\s-]+?)\s+(.+)$/);
+  if(m){
+    const qte=parseInt(parseSpokenNumber(m[1]))||1;
+    const desig=m[2].trim();
+    const art=findArticleByVoice(desig);
+    if(art){
+      askQuickMvt(art.id,'vente');
+      document.getElementById('mvt-qte').value=qte;
+      toast(`Article trouvé : ${art.desig}. Vérifiez et enregistrez.`);
+    } else {
+      toast(`Aucun article trouvé pour "${desig}" dans l'agence sélectionnée.`);
+    }
+    return;
+  }
+
+  // Sinon : on route vers l'assistant local (questions : stock faible, résumé, etc.)
+  toast(typeof localAssistantAnswer==='function' ? localAssistantAnswer(phrase) : "Commande non reconnue. Essayez : « ajouter 10 savon à 500 francs » ou « vendre 2 riz ».");
+}
+
+/* ============================================================
+   AUTOMATISATIONS "IA" — routines facilitées SANS service externe
+   (résumé quotidien, suggestions de réappro, assistant en langage
+   naturel). Fonctionne 100% hors-ligne sur GitHub Pages.
+   Un service relais optionnel (assistantEndpoint) permet de brancher
+   plus tard une vraie IA (Claude, etc.) sans retoucher ce code : il
+   suffit que ce service réponde à POST {question, context} par
+   { "answer": "texte" }.
+   ============================================================ */
+
+/* Ventes des N derniers jours (bornées à l'agence filtrée courante) */
+function ventesDerniersJours(n){
+  const start=new Date(); start.setDate(start.getDate()-(n-1)); start.setHours(0,0,0,0);
+  return filteredVentes().filter(v=>new Date(v.date)>=start);
+}
+
+/* Calcule, pour chaque article, la vélocité de vente (qté/jour sur 14j)
+   et une suggestion de réapprovisionnement quand le stock restant
+   couvre moins de 7 jours de vente. */
+function computeReorderSuggestions(){
+  const WINDOW=14, TARGET_DAYS=14;
+  const recentVentes=ventesDerniersJours(WINDOW);
+  const parArticle={};
+  recentVentes.forEach(v=>{
+    if(!v.articleId) return;
+    parArticle[v.articleId]=(parArticle[v.articleId]||0)+v.qte;
+  });
+  const out=[];
+  filteredArticles().forEach(a=>{
+    const venduN=parArticle[a.id]||0;
+    const vitesse=venduN/WINDOW; // unités/jour
+    const joursRestants= vitesse>0 ? a.qte/vitesse : (a.qte>0?Infinity:0);
+    const critique = a.qte<=a.seuil || (vitesse>0 && joursRestants<7);
+    if(critique && (vitesse>0 || a.qte<=a.seuil)){
+      const suggestion=Math.max(1, Math.ceil(vitesse*TARGET_DAYS - a.qte));
+      out.push({article:a, vitesse, joursRestants, suggestion});
+    }
+  });
+  out.sort((x,y)=> x.joursRestants-y.joursRestants);
+  return out;
+}
+
+/* Génère un texte de résumé quotidien en langage naturel, à partir
+   des vraies données (aucune IA externe nécessaire). */
+function generateDailySummary(){
+  const today=todayStr();
+  const yesterday=(()=>{ const d=new Date(); d.setDate(d.getDate()-1); return d.toISOString().slice(0,10); })();
+  const vJour=filteredVentes().filter(v=>v.date===today);
+  const vHier=filteredVentes().filter(v=>v.date===yesterday);
+  const totJour=vJour.reduce((s,v)=>s+v.total,0);
+  const totHier=vHier.reduce((s,v)=>s+v.total,0);
+  const variation= totHier>0 ? Math.round(((totJour-totHier)/totHier)*100) : null;
+
+  const parCat={};
+  vJour.forEach(v=>{ parCat[v.categorie]=(parCat[v.categorie]||0)+v.total; });
+  let topCat='—', topCatVal=0;
+  Object.entries(parCat).forEach(([c,val])=>{ if(val>topCatVal){topCat=c; topCatVal=val;} });
+
+  const lowStock=filteredArticles().filter(a=>a.qte<=a.seuil);
+  const reappro=computeReorderSuggestions();
+
+  const agenceLabel = adminAgenceFilter==='ALL' ? 'toutes agences confondues' : adminAgenceFilter;
+
+  let phrases=[];
+  phrases.push(`Aujourd'hui (${agenceLabel}) : ${vJour.length} vente(s) pour un total de ${fmt(totJour)} F.`);
+  if(variation!==null){
+    phrases.push(variation>=0 ? `C'est ${variation}% de plus qu'hier (${fmt(totHier)} F).` : `C'est ${Math.abs(variation)}% de moins qu'hier (${fmt(totHier)} F).`);
+  } else if(totHier===0 && totJour>0){
+    phrases.push(`Aucune vente n'avait été enregistrée hier.`);
+  }
+  if(topCatVal>0) phrases.push(`Le service le plus actif aujourd'hui est ${topCat} (${fmt(topCatVal)} F).`);
+  if(lowStock.length) phrases.push(`⚠️ ${lowStock.length} article(s) en stock faible ou en rupture.`);
+  else phrases.push(`Aucune alerte de stock pour le moment.`);
+  if(reappro.length) phrases.push(`${reappro.length} article(s) mériteraient un réapprovisionnement prochainement.`);
+  return phrases.join(' ');
+}
+
+/* ---- Moteur local de réponses (aucune clé API requise) ---- */
+function localAssistantAnswer(qRaw){
+  const q=qRaw.toLowerCase();
+  const today=todayStr();
+
+  if(/résum|resum/.test(q)){
+    return generateDailySummary();
+  }
+  if(/(stock faible|rupture|manque|épuis|epuis)/.test(q)){
+    const low=filteredArticles().filter(a=>a.qte<=a.seuil);
+    if(!low.length) return "Aucun article en stock faible pour le moment. 👍";
+    const lines=low.slice(0,10).map(a=>`• ${a.desig} (${a.agence}) — reste ${a.qte}, seuil ${a.seuil}`);
+    return `${low.length} article(s) en stock faible :\n`+lines.join('\n')+(low.length>10?`\n… et ${low.length-10} autre(s).`:'');
+  }
+  if(/(réappro|reappro|command|acheter)/.test(q)){
+    const sugg=computeReorderSuggestions();
+    if(!sugg.length) return "Rien d'urgent à commander pour l'instant.";
+    const lines=sugg.slice(0,10).map(s=>`• ${s.article.desig} (${s.article.agence}) — reste ${s.article.qte}, ~${s.vitesse.toFixed(1)}/j vendu, suggestion : commander ${s.suggestion}`);
+    return `Suggestions de réapprovisionnement (${sugg.length}) :\n`+lines.join('\n');
+  }
+  if(/(meilleur|plus vendu|top article|top produit)/.test(q)){
+    const ventes30=ventesDerniersJours(30);
+    const parArticle={};
+    ventes30.forEach(v=>{ const k=v.desig; parArticle[k]=(parArticle[k]||0)+v.qte; });
+    const arr=Object.entries(parArticle).sort((a,b)=>b[1]-a[1]);
+    if(!arr.length) return "Pas encore assez de ventes ce mois-ci pour dégager une tendance.";
+    return `Sur les 30 derniers jours, l'article le plus vendu est "${arr[0][0]}" avec ${arr[0][1]} unité(s). `+
+      (arr[1]?`Ensuite : "${arr[1][0]}" (${arr[1][1]}).`:'');
+  }
+  if(/(total|combien|chiffre|ca\b|vente)/.test(q) && /(aujourd|jour)/.test(q)){
+    const vJour=filteredVentes().filter(v=>v.date===today);
+    return `Aujourd'hui : ${vJour.length} vente(s) pour ${fmt(vJour.reduce((s,v)=>s+v.total,0))} F.`;
+  }
+  if(/(total|combien|chiffre|ca\b)/.test(q) && /(mois)/.test(q)){
+    const startMonth=new Date(); startMonth.setDate(1); startMonth.setHours(0,0,0,0);
+    const vMois=filteredVentes().filter(v=>new Date(v.date)>=startMonth);
+    return `Ce mois-ci : ${vMois.length} vente(s) pour ${fmt(vMois.reduce((s,v)=>s+v.total,0))} F.`;
+  }
+  if(/(objectif)/.test(q)){
+    const startMonth=new Date(); startMonth.setDate(1); startMonth.setHours(0,0,0,0);
+    const vMois=filteredVentes().filter(v=>new Date(v.date)>=startMonth);
+    const caReel=vMois.reduce((s,v)=>s+v.total,0);
+    const pct=Math.round((caReel/(objectifMensuel||1))*100);
+    return `Objectif du mois : ${fmt(objectifMensuel)} F. Réalisé : ${fmt(caReel)} F (${pct}%).`;
+  }
+  return "Je peux répondre sur : le total des ventes du jour/du mois, le stock faible, les suggestions de réapprovisionnement, le meilleur article, l'objectif du mois, ou un résumé complet de la journée. Reformulez votre question avec l'un de ces mots-clés.";
+}
+
+function assistAppend(role,text){
+  const log=document.getElementById('assist-log');
+  const bubble=document.createElement('div');
+  bubble.style.cssText = role==='user'
+    ? 'align-self:flex-end;background:var(--odoo);color:#fff;padding:10px 14px;border-radius:14px 14px 2px 14px;max-width:80%;white-space:pre-line;font-size:13.5px;'
+    : 'align-self:flex-start;background:var(--bg-soft,#F4F1EC);color:var(--text-strong);padding:10px 14px;border-radius:14px 14px 14px 2px;max-width:80%;white-space:pre-line;font-size:13.5px;border:1px solid #EFEAF0;';
+  bubble.textContent=text;
+  log.appendChild(bubble);
+  log.scrollTop=log.scrollHeight;
+}
+
+async function askAssistant(question){
+  if(!question || !question.trim()) return;
+  assistAppend('user',question);
+  document.getElementById('assist-input').value='';
+  let endpoint='';
+  try{ const r=await idbGet('settings','assistantEndpoint'); endpoint=(r&&r.value)||''; }catch(e){}
+  if(endpoint){
+    assistAppend('assistant','…');
+    const log=document.getElementById('assist-log');
+    try{
+      const context={
+        agenceFiltre:adminAgenceFilter,
+        ventesAujourdHui:filteredVentes().filter(v=>v.date===todayStr()).length,
+        stockFaible:filteredArticles().filter(a=>a.qte<=a.seuil).length,
+      };
+      const resp=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question,context})});
+      const data=await resp.json();
+      log.lastChild.remove();
+      assistAppend('assistant', data.answer || "Le service IA n'a pas renvoyé de réponse exploitable.");
+    }catch(e){
+      log.lastChild.remove();
+      assistAppend('assistant', "Le service IA configuré est injoignable. Réponse locale : "+localAssistantAnswer(question));
+    }
+  } else {
+    assistAppend('assistant', localAssistantAnswer(question));
+  }
+}
+
+let assistantInitDone=false;
+async function initAssistant(){
+  let endpoint='';
+  try{ const r=await idbGet('settings','assistantEndpoint'); endpoint=(r&&r.value)||''; }catch(e){}
+  document.getElementById('assist-endpoint').value=endpoint;
+  document.getElementById('assist-mode-tag').textContent = endpoint ? '· Connecté à un service IA' : '· Mode assistant intégré (hors-ligne)';
+  if(!assistantInitDone){
+    assistantInitDone=true;
+    assistAppend('assistant', "Bonjour ! Je peux vous aider sur vos routines : ventes du jour, stock faible, réapprovisionnement, meilleur article, objectif du mois. Posez une question ou utilisez un raccourci ci-dessous.");
+    document.getElementById('assist-send').addEventListener('click', ()=>askAssistant(document.getElementById('assist-input').value));
+    document.getElementById('assist-input').addEventListener('keydown', e=>{ if(e.key==='Enter') askAssistant(e.target.value); });
+    document.querySelector('#av-assistant .dash-filters').addEventListener('click', e=>{
+      const b=e.target.closest('button[data-q]'); if(!b) return;
+      askAssistant(b.dataset.q);
+    });
+    document.getElementById('assist-endpoint-save').addEventListener('click', async ()=>{
+      const val=document.getElementById('assist-endpoint').value.trim();
+      await safePut('settings',{key:'assistantEndpoint',value:val});
+      document.getElementById('assist-mode-tag').textContent = val ? '· Connecté à un service IA' : '· Mode assistant intégré (hors-ligne)';
+      toast(val ? 'Service IA enregistré.' : 'Mode assistant intégré (hors-ligne) activé.');
+    });
+  }
+}
 </script>
 </body>
 </html>
