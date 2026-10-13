@@ -439,6 +439,20 @@ tbody tr:hover{background:var(--odoo-light);}
 .modal h3{font-family:var(--sans);font-size:16px;color:var(--odoo);margin-bottom:12px;}
 .modal .row{display:flex;gap:8px;margin-top:16px;}
 
+
+/* ---- Ajustement écran PC / zoom : tout visible, boutons à la ligne ---- */
+.odoo-topbar{height:auto;min-height:46px;flex-wrap:wrap;}
+.appmenu{flex-wrap:wrap;}
+.odoo-main{padding:16px clamp(10px,1.6vw,22px) 60px;overflow-x:hidden;min-width:0;}
+.odoo-main .card{max-width:100%;}
+table{font-size:clamp(11.5px,.9vw,12.8px);}
+thead th,tbody td{padding:7px clamp(5px,.6vw,10px);}
+thead th{white-space:nowrap;}
+tbody td{vertical-align:middle;}
+.act{display:flex;flex-wrap:wrap;gap:4px;min-width:140px;}
+.act .btn-sm{padding:5px 9px;white-space:nowrap;}
+@media(max-width:1400px){.act .btn-sm{padding:4px 7px;font-size:11px;}}
+@media(max-width:1100px){table{font-size:11.5px;}.act{min-width:110px;}}
 .hidden{display:none !important;}
 #screen-login,#screen-guichet,#screen-admin{position:relative;z-index:1;}
 .blc-logo-bg{z-index:-1;}
@@ -740,7 +754,7 @@ tbody tr:hover{background:var(--odoo-light);}
         </div>
       </div>
       <div class="card" style="padding:0;overflow:auto;">
-        <table><thead><tr><th>Agence</th><th>Code</th><th>Désignation</th><th>Service</th><th>Stock</th><th>P.Achat</th><th>P.Vente</th><th>Statut</th><th></th></tr></thead>
+        <table><thead><tr><th>Agence</th><th>Code</th><th>Désignation</th><th>Service</th><th>Stock</th><th>P.Achat</th><th>P.Vente</th><th>Statut</th><th>Actions</th></tr></thead>
         <tbody id="stock-body"></tbody></table>
         <div class="panel-empty" id="stock-empty" style="display:none;">Aucun article.</div>
       </div>
@@ -1611,7 +1625,7 @@ function renderGerants(){
   const list=filteredGerants();
   document.getElementById('gerants-empty').style.display= list.length? 'none':'block';
   body.innerHTML=list.map(g=>`<tr><td>${g.nom}</td><td style="font-family:var(--mono);">${g.code}</td><td>${g.agence||'—'}</td>
-    <td><button class="btn btn-ghost btn-sm" onclick="askDeleteGerant('${g.id}')">Suppr.</button></td></tr>`).join('');
+    <td><div class="act"><button class="btn btn-ghost btn-sm" style="color:var(--red);" onclick="askDeleteGerant('${g.id}')">Supprimer</button></div></td></tr>`).join('');
 }
 document.getElementById('btn-add-gerant').addEventListener('click',async ()=>{
   const nom=document.getElementById('g-nom').value.trim();
@@ -1901,12 +1915,12 @@ function renderStockTable(){
     return `<tr><td>${a.agence||'—'}</td><td>${a.code}</td><td>${a.desig}</td><td>${a.categorie}</td><td class="num">${a.qte}</td>
     <td class="num">${fmt(a.pa)}</td><td class="num">${fmt(a.pv)}</td>
     <td><span class="tag ${low?'low':''}">${low?'STOCK FAIBLE':'OK'}</span></td>
-    <td style="white-space:nowrap;">
+    <td><div class="act">
       <button class="btn btn-ghost btn-sm" onclick="askEditArticle('${a.id}')">Modifier</button>
       <button class="btn btn-ghost btn-sm" onclick="askQuickMvt('${a.id}','achat')" title="Entrée de stock">+ Achat</button>
       <button class="btn btn-ghost btn-sm" onclick="askQuickMvt('${a.id}','vente')" title="Sortie de stock">+ Vente</button>
       <button class="btn btn-ghost btn-sm" onclick="askDuplicateArticle('${a.id}')" title="Copier vers l'autre agence">⇄ Copier</button>
-      <button class="btn btn-ghost btn-sm" onclick="askDeleteArticle('${a.id}')">Suppr.</button>
+      <button class="btn btn-ghost btn-sm" onclick="askDeleteArticle('${a.id}')" style="color:var(--red);">Supprimer</button></div>
     </td></tr>`;
   }).join('');
 }
@@ -2100,8 +2114,8 @@ function renderHistorique(){
   document.getElementById('hist-empty').style.display= ventesF.length? 'none':'block';
   body.innerHTML=[...ventesF].reverse().slice(0,300).map(v=>`<tr><td>${v.agence||'—'}</td><td>${v.date}</td><td>${v.heure}</td><td>${v.desig}</td>
     <td>${v.categorie}</td><td class="num">${v.qte}</td><td class="num">${fmt(v.pu)}</td><td class="num">${fmt(v.total)}</td><td>${v.paiement}</td><td>${v.caissier||'—'}</td>
-    <td><button class="btn btn-ghost btn-sm" onclick="askEditVente('${v.id}')">Modifier</button>
-        <button class="btn btn-ghost btn-sm" style="color:var(--red);" onclick="askDeleteVente('${v.id}')">Supprimer</button></td></tr>`).join('');
+    <td><div class="act"><button class="btn btn-ghost btn-sm" onclick="askEditVente('${v.id}')">Modifier</button>
+        <button class="btn btn-ghost btn-sm" style="color:var(--red);" onclick="askDeleteVente('${v.id}')">Supprimer</button></div></td></tr>`).join('');
 
   const versementsF=filteredVersements();
   const vbody=document.getElementById('vers-admin-body');
