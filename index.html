@@ -2628,9 +2628,16 @@ function cloudError(e,label){
   console.warn('cloud',label,e);
   const code=(e&&e.code)||'';
   if(code==='permission-denied'){
-    cloudErrorState='Accès refusé (règles Firestore)';
+    let u=null;
+    try{ u=(window.firebase && window.firebase.apps && window.firebase.apps.length) ? window.firebase.auth().currentUser : null; }catch(x){}
+    cloudErrorState = u ? ('Compte '+(u.email||'')+' refusé par les règles') : 'Connexion requise (e-mail + mot de passe)';
     syncStatusAuto();
-    toast("Synchro refusée par Firebase : vérifiez les règles Firestore (lecture/écriture sur boutiques).");
+    try{ if(document.getElementById('sync-bg').classList.contains('show')) updateSyncModalUi(false); }catch(x){}
+    if(!cloudDeniedShown){
+      cloudDeniedShown=true;
+      toast(u ? "Les règles Firestore n'autorisent pas "+(u.email||'ce compte')+" : corrigez l'e-mail dans les règles, ou utilisez « if request.auth != null »."
+              : "Connectez-vous : bouton Synchro → e-mail et mot de passe du compte Firebase.");
+    }
   } else if(code==='unavailable' || code==='deadline-exceeded'){
     syncStatusAuto(); /* réseau coupé : Firestore réessaie tout seul */
   } else {
@@ -2763,7 +2770,7 @@ async function handleSettingsSnapshot(snap,fromServer){
 }
 async function handleCloudSnapshot(store,snap){
   const fromServer=!snap.metadata.fromCache;
-  if(fromServer && cloudErrorState==='Erreur synchro') cloudErrorState='';
+  if(fromServer && cloudErrorState) cloudErrorState='';
   if(store==='settings') return handleSettingsSnapshot(snap,fromServer);
   /* tant que le serveur n'a pas répondu, on ignore le cache (potentiellement ancien) */
   if(!cloudFirstDone[store] && !fromServer) return;
@@ -2838,7 +2845,7 @@ function detachCloudListeners(){
 }
 
 /* ---- Connexion ---- */
-let cloudAuthUnsub=null;
+let cloudAuthUnsub=null, cloudDeniedShown=false;
 function authMessage(e){
   const c=(e&&e.code)||'';
   if(c==='auth/invalid-credential'||c==='auth/wrong-password'||c==='auth/user-not-found'||c==='auth/invalid-email') return 'E-mail ou mot de passe incorrect.';
@@ -2893,7 +2900,7 @@ async function connectCloudSync(cfg,{silent=false}={}){
       try{ await cloudDb.enablePersistence({synchronizeTabs:true}); }catch(e){ /* déjà actif / navigateur non compatible : ok */ }
     }
     cloudBoutique=cleanBoutiqueCode(cfg.codeBoutique);
-    cloudErrorState=''; cloudPending=0; cloudFirstDone={};
+    cloudErrorState=''; cloudDeniedShown=false; cloudPending=0; cloudFirstDone={};
     try{ const r=await idbGet('settings','cloudLastSync:'+cloudBoutique); cloudLastSyncTs=(r&&r.value)||0; }catch(e){ cloudLastSyncTs=0; }
     cloudLastSyncAtConnect=cloudLastSyncTs;
     cloudReady=true;
@@ -2942,8 +2949,8 @@ function updateSyncModalUi(connected){
 }
 async function openSyncModal(){
   document.getElementById('sync-bg').classList.add('show');
-  updateSyncModalUi(cloudReady);
-  if(!cloudReady){
+  updateSyncModalUi(cloudReady && !cloudErrorState);
+  if(!cloudReady || cloudErrorState){
     const r=await idbGet('settings','cloudConfig');
     const cfg=(r&&r.value)||null;
     if(cfg){
@@ -2981,12 +2988,14 @@ document.getElementById('sync-connect').addEventListener('click', async ()=>{
     return;
   }
   const password=document.getElementById('sync-password').value;
-  if(!cfg.email || !password){ toast('Renseignez l\'e-mail et le mot de passe du compte synchro.'); return; }
+  let hasSession=false;
+  try{ hasSession=!!(window.firebase && window.firebase.apps && window.firebase.apps.length && window.firebase.auth().currentUser); }catch(x){}
+  if(!hasSession && (!cfg.email || !password)){ toast('Renseignez l\'e-mail et le mot de passe du compte synchro.'); return; }
   const saved=Object.assign({},cfg); /* le mot de passe n'est jamais enregistré */
   await idbPut('settings',{key:'cloudConfig',value:saved}).catch(()=>{});
   await connectCloudSync(Object.assign({},cfg,{password}));
   document.getElementById('sync-password').value='';
-  updateSyncModalUi(cloudReady);
+  updateSyncModalUi(cloudReady && !cloudErrorState);
 });
 document.getElementById('sync-now').addEventListener('click', async ()=>{
   if(!cloudReady){ toast('Non connecté.'); return; }
