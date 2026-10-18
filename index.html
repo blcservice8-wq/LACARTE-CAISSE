@@ -164,6 +164,12 @@ input,select{font-family:inherit;}
 .btn-red{background:var(--red);color:#fff;}
 .btn-block{width:100%;}
 .btn-sm{padding:6px 11px;font-size:11.5px;border-radius:6px;}
+.sel-cb{width:16px;height:16px;cursor:pointer;accent-color:var(--odoo);}
+.sel-bar{display:none;align-items:center;gap:10px;flex-wrap:wrap;position:sticky;top:0;z-index:5;margin:0 0 10px;padding:10px 14px;border-radius:10px;background:var(--odoo);color:#fff;font-weight:700;font-size:13px;box-shadow:0 4px 14px rgba(0,0,0,.18);}
+.sel-bar.show{display:flex;}
+.sel-bar .btn{background:#fff;color:var(--odoo);border:none;}
+.sel-bar .btn.sel-del{background:#d63a3a;color:#fff;}
+tr.sel-row td{background:rgba(113,75,103,.12);}
 
 /* ============================================================
    GUICHET (POS) — ShopCaisse-inspired
@@ -753,8 +759,14 @@ tbody td{vertical-align:middle;}
           <div class="mic-row"><input id="stock-search" placeholder="Nom ou code…"><button type="button" class="mic-btn" onclick="startDictation('stock-search',this)" title="Dicter">🎤</button></div>
         </div>
       </div>
+      <div class="sel-bar" id="sel-bar-articles">
+        <span id="sel-count-articles">0 sélectionné</span>
+        <button class="btn btn-sm" onclick="selAllVisible('articles',true)">Tout sélectionner (liste affichée)</button>
+        <button class="btn btn-sm" onclick="selClear('articles')">Désélectionner</button>
+        <button class="btn btn-sm sel-del" onclick="askBulkDelete('articles')">🗑 Supprimer la sélection</button>
+      </div>
       <div class="card" style="padding:0;overflow:auto;">
-        <table><thead><tr><th>Agence</th><th>Code</th><th>Désignation</th><th>Service</th><th>Stock</th><th>P.Achat</th><th>P.Vente</th><th>Statut</th><th>Actions</th></tr></thead>
+        <table><thead><tr><th style="width:34px;"><input type="checkbox" class="sel-cb" id="sel-all-articles" title="Tout sélectionner / désélectionner" onclick="selAllVisible('articles',this.checked)"></th><th>Agence</th><th>Code</th><th>Désignation</th><th>Service</th><th>Stock</th><th>P.Achat</th><th>P.Vente</th><th>Statut</th><th>Actions</th></tr></thead>
         <tbody id="stock-body"></tbody></table>
         <div class="panel-empty" id="stock-empty" style="display:none;">Aucun article.</div>
       </div>
@@ -763,8 +775,14 @@ tbody td{vertical-align:middle;}
     <!-- HISTORIQUE -->
     <div id="av-historique" class="hidden">
       <div class="grid g3" id="hist-stats"></div>
+      <div class="sel-bar" id="sel-bar-ventes">
+        <span id="sel-count-ventes">0 sélectionné</span>
+        <button class="btn btn-sm" onclick="selAllVisible('ventes',true)">Tout sélectionner (liste affichée)</button>
+        <button class="btn btn-sm" onclick="selClear('ventes')">Désélectionner</button>
+        <button class="btn btn-sm sel-del" onclick="askBulkDelete('ventes')">🗑 Supprimer la sélection</button>
+      </div>
       <div class="card" style="padding:0;overflow:auto;margin-top:14px;">
-        <table><thead><tr><th>Agence</th><th>Date</th><th>Heure</th><th>Désignation</th><th>Service</th><th>Qté</th><th>P.U.</th><th>Total</th><th>Paiement</th><th>Caissier</th><th>Actions</th></tr></thead>
+        <table><thead><tr><th style="width:34px;"><input type="checkbox" class="sel-cb" id="sel-all-ventes" title="Tout sélectionner / désélectionner" onclick="selAllVisible('ventes',this.checked)"></th><th>Agence</th><th>Date</th><th>Heure</th><th>Désignation</th><th>Service</th><th>Qté</th><th>P.U.</th><th>Total</th><th>Paiement</th><th>Caissier</th><th>Actions</th></tr></thead>
         <tbody id="hist-body"></tbody></table>
         <div class="panel-empty" id="hist-empty" style="display:none;">Aucune vente enregistrée.</div>
       </div>
@@ -1950,9 +1968,11 @@ function renderStockTable(){
   if(q) list=list.filter(a=>a.desig.toLowerCase().includes(q)||a.code.toLowerCase().includes(q));
   const body=document.getElementById('stock-body');
   document.getElementById('stock-empty').style.display= list.length? 'none':'block';
+  SEL_VISIBLE.articles=list.map(a=>a.id);
+  const exist=new Set(articles.map(a=>a.id)); SEL.articles.forEach(id=>{ if(!exist.has(id)) SEL.articles.delete(id); });
   body.innerHTML=list.map(a=>{
     const low=a.qte<=a.seuil;
-    return `<tr><td>${a.agence||'—'}</td><td>${a.code}</td><td>${a.desig}</td><td>${a.categorie}</td><td class="num">${a.qte}</td>
+    return `<tr><td><input type="checkbox" class="sel-cb" data-id="${a.id}" onclick="selToggle('articles','${a.id}',event)"></td><td>${a.agence||'—'}</td><td>${a.code}</td><td>${a.desig}</td><td>${a.categorie}</td><td class="num">${a.qte}</td>
     <td class="num">${fmt(a.pa)}</td><td class="num">${fmt(a.pv)}</td>
     <td><span class="tag ${low?'low':''}">${low?'STOCK FAIBLE':'OK'}</span></td>
     <td><div class="act">
@@ -1963,6 +1983,7 @@ function renderStockTable(){
       <button class="btn btn-ghost btn-sm" onclick="askDeleteArticle('${a.id}')" style="color:var(--red);">Supprimer</button></div>
     </td></tr>`;
   }).join('');
+  updateSelUi('articles');
 }
 async function askDuplicateArticle(id){
   const a=articles.find(x=>x.id===id);
@@ -2099,6 +2120,48 @@ document.getElementById('mvt-save').addEventListener('click', async ()=>{
 });
 
 let pendingDelete=null;
+/* ---- OUTIL DE SÉLECTION MULTIPLE (Stock + Historique des ventes) ---- */
+const SEL={articles:new Set(),ventes:new Set()};
+const SEL_VISIBLE={articles:[],ventes:[]};
+const SEL_LAST={articles:null,ventes:null};
+function selToggle(kind,id,ev){
+  const set=SEL[kind], vis=SEL_VISIBLE[kind], on=ev.target.checked;
+  const apply=i=>{ on ? set.add(i) : set.delete(i); };
+  if(ev.shiftKey && SEL_LAST[kind]!=null){           /* Maj + clic : sélection d'une plage */
+    const a=vis.indexOf(SEL_LAST[kind]), b=vis.indexOf(id);
+    if(a>-1 && b>-1){ for(let i=Math.min(a,b);i<=Math.max(a,b);i++) apply(vis[i]); } else apply(id);
+  } else apply(id);
+  SEL_LAST[kind]=id;
+  updateSelUi(kind);
+}
+function selAllVisible(kind,on){
+  SEL_VISIBLE[kind].forEach(id=>{ on ? SEL[kind].add(id) : SEL[kind].delete(id); });
+  updateSelUi(kind);
+}
+function selClear(kind){ SEL[kind].clear(); SEL_LAST[kind]=null; updateSelUi(kind); }
+function updateSelUi(kind){
+  const set=SEL[kind], vis=SEL_VISIBLE[kind];
+  const bar=document.getElementById('sel-bar-'+kind); if(!bar) return;
+  bar.classList.toggle('show',set.size>0);
+  document.getElementById('sel-count-'+kind).textContent=set.size+' sélectionné'+(set.size>1?'s':'');
+  const nVis=vis.filter(id=>set.has(id)).length;
+  const all=document.getElementById('sel-all-'+kind);
+  if(all){ all.checked=vis.length>0 && nVis===vis.length; all.indeterminate=nVis>0 && nVis<vis.length; }
+  const body=document.getElementById(kind==='articles'?'stock-body':'hist-body');
+  body.querySelectorAll('input.sel-cb').forEach(cb=>{
+    const on=set.has(cb.dataset.id); cb.checked=on;
+    const tr=cb.closest('tr'); if(tr) tr.classList.toggle('sel-row',on);
+  });
+}
+function askBulkDelete(kind){
+  const ids=[...SEL[kind]]; if(!ids.length) return;
+  pendingDelete={type:'bulk-'+kind,ids};
+  document.getElementById('modal-title').textContent = kind==='articles' ? 'Supprimer les articles sélectionnés' : 'Supprimer les ventes sélectionnées';
+  document.getElementById('modal-body').textContent = kind==='articles'
+    ? ids.length+' article(s) seront supprimés définitivement sur tous les appareils. Confirmer ?'
+    : ids.length+' vente(s) seront retirées du journal et de l\'historique, et les quantités vendues seront recréditées au stock. Confirmer ?';
+  document.getElementById('modal-bg').classList.add('show');
+}
 async function safeDelete(store,id){
   try{ await idbDelete(store,id); }
   catch(e){ console.warn('idbDelete échoué sur', store, e); return false; }
@@ -2134,6 +2197,25 @@ document.getElementById('modal-confirm').addEventListener('click',async ()=>{
       toast('Vente supprimée, stock recrédité.');
     }
   }
+  if(pendingDelete && pendingDelete.type==='bulk-articles'){
+    const ids=pendingDelete.ids, setIds=new Set(ids);
+    articles=articles.filter(a=>!setIds.has(a.id));
+    for(const id of ids){ await safeDelete('articles',id); }
+    SEL.articles.clear(); SEL_LAST.articles=null;
+    renderStockTable(); toast(ids.length+' article(s) supprimé(s).');
+  }
+  if(pendingDelete && pendingDelete.type==='bulk-ventes'){
+    const ids=pendingDelete.ids; let n=0;
+    for(const id of ids){
+      const v=ventes.find(x=>x.id===id); if(!v) continue;
+      const a=articles.find(x=>x.id===v.articleId);
+      if(a){ await adjustStock(a,v.qte); }
+      ventes=ventes.filter(x=>x.id!==id);
+      await safeDelete('ventes',id); n++;
+    }
+    SEL.ventes.clear(); SEL_LAST.ventes=null;
+    refreshAfterVenteChange(); toast(n+' vente(s) supprimée(s), stock recrédité.');
+  }
   document.getElementById('modal-bg').classList.remove('show'); pendingDelete=null;
 });
 
@@ -2152,10 +2234,14 @@ function renderHistorique(){
   `;
   const body=document.getElementById('hist-body');
   document.getElementById('hist-empty').style.display= ventesF.length? 'none':'block';
-  body.innerHTML=[...ventesF].reverse().slice(0,300).map(v=>`<tr><td>${v.agence||'—'}</td><td>${v.date}</td><td>${v.heure}</td><td>${v.desig}</td>
+  const hv=[...ventesF].reverse().slice(0,300);
+  SEL_VISIBLE.ventes=hv.map(v=>v.id);
+  const existV=new Set(ventes.map(v=>v.id)); SEL.ventes.forEach(id=>{ if(!existV.has(id)) SEL.ventes.delete(id); });
+  body.innerHTML=hv.map(v=>`<tr><td><input type="checkbox" class="sel-cb" data-id="${v.id}" onclick="selToggle('ventes','${v.id}',event)"></td><td>${v.agence||'—'}</td><td>${v.date}</td><td>${v.heure}</td><td>${v.desig}</td>
     <td>${v.categorie}</td><td class="num">${v.qte}</td><td class="num">${fmt(v.pu)}</td><td class="num">${fmt(v.total)}</td><td>${v.paiement}</td><td>${v.caissier||'—'}</td>
     <td><div class="act"><button class="btn btn-ghost btn-sm" onclick="askEditVente('${v.id}')">Modifier</button>
         <button class="btn btn-ghost btn-sm" style="color:var(--red);" onclick="askDeleteVente('${v.id}')">Supprimer</button></div></td></tr>`).join('');
+  updateSelUi('ventes');
 
   const versementsF=filteredVersements();
   const vbody=document.getElementById('vers-admin-body');
