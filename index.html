@@ -933,12 +933,17 @@ tbody td{vertical-align:middle;}
       <span class="sync-label" style="font-weight:600;">Non connecté</span>
     </div>
     <div style="font-size:11.5px;color:var(--muted);margin-bottom:14px;">
-      Permet de partager les données (stock, ventes, achats…) entre tous vos appareils (téléphone, PC…) en temps réel, via un projet Firebase gratuit. Chaque appareil doit utiliser exactement le même <b>Code boutique</b> et les mêmes informations de connexion.
+      Permet de partager les données (stock, ventes, achats…) entre tous vos appareils (téléphone, PC…) en temps réel, via un projet Firebase gratuit. Chaque appareil doit utiliser exactement le même <b>Code boutique</b> et les mêmes informations de connexion. Le code boutique est sensible aux majuscules/minuscules.
     </div>
     <div id="sync-form-fields">
       <div class="formrow">
         <div class="field" style="min-width:220px;"><label>Code boutique (identique sur tous les appareils)</label><input id="sync-boutique" placeholder="ex: BLC-SERVICES"></div>
       </div>
+      <div class="formrow">
+        <div class="field" style="min-width:220px;"><label>E-mail du compte synchro</label><input id="sync-email" type="email" autocomplete="username" placeholder="ex: caisse@blc.sn"></div>
+        <div class="field" style="min-width:220px;"><label>Mot de passe</label><input id="sync-password" type="password" autocomplete="current-password"></div>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">Compte créé dans Firebase → Authentication → Méthode de connexion → E-mail/Mot de passe. Même compte sur tous les appareils. Le mot de passe n'est pas enregistré : la session reste ouverte sur l'appareil.</div>
       <div class="formrow">
         <div class="field" style="min-width:260px;"><label>apiKey</label><input id="sync-apiKey"></div>
         <div class="field" style="min-width:220px;"><label>authDomain</label><input id="sync-authDomain"></div>
@@ -1129,15 +1134,27 @@ async function init(){
   /* Migration : les articles/achats créés avant l'ajout du suivi par agence
      n'ont pas de champ "agence". On leur assigne l'agence par défaut afin que
      le filtre global fonctionne correctement pour toutes les données existantes. */
+  /* Identifiant d'appareil (n° de facture hors ligne, traçabilité) */
+  try{
+    const r=await idbGet('settings','deviceId');
+    if(r && r.value) deviceId=r.value;
+    else { deviceId=Math.random().toString(36).slice(2,6).toUpperCase(); await idbPut('settings',{key:'deviceId',value:deviceId}); }
+  }catch(e){ deviceId='X'+Math.random().toString(36).slice(2,4).toUpperCase(); }
+  /* Si la synchro cloud est configurée, on NE crée PAS de données de démarrage : le cloud les fournit
+     (sinon chaque nouvel appareil créait des doublons avec d'autres identifiants). */
+  let hasCloudCfg=false;
+  try{ const cc=await idbGet('settings','cloudConfig'); hasCloudCfg=!!(cc && cc.value && cc.value.codeBoutique); }catch(e){}
   for(const a of articles){ if(!a.agence){ a.agence=AGENCES[0]; await safePut('articles',a); } }
   for(const a of achats){ if(!a.agence){ a.agence=AGENCES[0]; await safePut('achats',a); } }
-  if(articles.length===0){
+  if(articles.length===0 && !hasCloudCfg){
+    let si=0;
     for(const a of SEED_ARTICLES){
-      const art={id:uid(),code:a.code,desig:a.desig,categorie:a.categorie,qte:a.qte,pa:a.pa,pv:a.pv,seuil:a.seuil,agence:AGENCES[0]};
-      articles.push(art); await safePut('articles',art);
+      /* identifiant déterministe : identique sur tous les appareils -> pas de doublons à la synchro */
+      const art={id:'seed-'+(si++),code:a.code,desig:a.desig,categorie:a.categorie,qte:a.qte,pa:a.pa,pv:a.pv,seuil:a.seuil,agence:AGENCES[0],_seed:true};
+      articles.push(art); await idbPut('articles',art).catch(()=>{});
     }
   }
-  if(!articles.some(a=>a.categorie==='VENTE GENERALE')){
+  if(!hasCloudCfg && !articles.some(a=>a.categorie==='VENTE GENERALE')){
     const seedVente=[
       {code:'010501/GEN',desig:'Bic Bleu',pv:100},
       {code:'020501/GEN',desig:'Transparent',pv:100},
@@ -1147,19 +1164,20 @@ async function init(){
       {code:'060501/GEN',desig:'Saisie Cv',pv:1000},
       {code:'070501/GEN',desig:'Saisie De Fiche De Versement',pv:300},
     ];
+    let vi=0;
     for(const s of seedVente){
       for(const ag of AGENCES){
-        const art={id:uid(),code:s.code,desig:s.desig,categorie:'VENTE GENERALE',qte:999,pa:Math.round(s.pv*0.5),pv:s.pv,seuil:0,agence:ag};
-        articles.push(art); await safePut('articles',art);
+        const art={id:'seedvg-'+(vi++),code:s.code,desig:s.desig,categorie:'VENTE GENERALE',qte:999,pa:Math.round(s.pv*0.5),pv:s.pv,seuil:0,agence:ag,_seed:true};
+        articles.push(art); await idbPut('articles',art).catch(()=>{});
       }
     }
   }
-  if(gerants.length===0){
+  if(gerants.length===0 && !hasCloudCfg){
     const seedGerants=[
-      {id:uid(),nom:'Fatou',code:'1111',agence:'BLC JAXAY'},
-      {id:uid(),nom:'Modou',code:'2222',agence:'BLC NDIEMANE'},
+      {id:'seed-g1',nom:'Fatou',code:'1111',agence:'BLC JAXAY',_seed:true},
+      {id:'seed-g2',nom:'Modou',code:'2222',agence:'BLC NDIEMANE',_seed:true},
     ];
-    for(const g of seedGerants){ gerants.push(g); await safePut('gerants',g); }
+    for(const g of seedGerants){ gerants.push(g); await idbPut('gerants',g).catch(()=>{}); }
   }
   fillCategorySelects();
   fillAgenceFilter();
@@ -1169,7 +1187,7 @@ async function init(){
     objectifMensuel = (r && r.value) ? r.value : 100000;
   }catch(e){ objectifMensuel = 100000; }
 }
-init().catch(e=>console.error('Erreur init():', e));
+const initPromise=init().catch(e=>console.error('Erreur init():', e));
 
 /* ============================================================
    THEME (jour / nuit)
@@ -1255,7 +1273,7 @@ document.getElementById('oc-ouvrir').addEventListener('click',async ()=>{
   const now=new Date();
   const ouverture={id:uid(),date:todayStr(),heure:now.toTimeString().slice(0,5),
     agence:currentAgence,caissier:currentCashier,especes,orangeMoney:om,note};
-  try{ await idbPut('ouvertures',ouverture); }catch(e){}
+  try{ await safePut('ouvertures',ouverture); }catch(e){}
   document.getElementById('opening-control-bg').classList.remove('show');
   enterGuichet();
 });
@@ -1472,10 +1490,14 @@ document.getElementById('pay-methods').addEventListener('click',e=>{
 });
 /* Écriture IndexedDB "best effort" : ne doit jamais bloquer la mise à jour de l'écran.
    Si la persistance échoue (store manquant, iframe sandboxée, etc.), on log et on continue. */
-async function safePut(store,val){
+async function safePut(store,val,opts){
+  /* horodatage de chaque modification (sert à la fusion entre appareils) */
+  const isSynced = SYNC_STORES.includes(store) || (store==='settings' && val && val.key==='objectifMensuel');
+  if(isSynced && val && typeof val==='object'){ val._ts=Date.now(); val._dev=deviceId; delete val._seed; }
   try{ await idbPut(store,val); }
   catch(e){ console.warn('idbPut échoué sur', store, e); return false; }
-  cloudPushOne(store,val);
+  if(store==='settings'){ if(isSynced) cloudPushSetting(val); }
+  else cloudPushOne(store,val,opts);
   return true;
 }
 document.getElementById('pos-validate').addEventListener('click',async ()=>{
@@ -1491,7 +1513,7 @@ document.getElementById('pos-validate').addEventListener('click',async ()=>{
     ventes.push(vente);
     if(!await safePut('ventes',vente)) persistFailed=true;
     const a=articles.find(x=>x.id===c.articleId);
-    if(a){a.qte-=c.qte; await safePut('articles',a);}
+    if(a){ await adjustStock(a,-c.qte); }
   }
   showTicket(cart,now,selectedPayment,invoiceNo);
   cart=[]; renderCartPos();
@@ -1500,13 +1522,32 @@ document.getElementById('pos-validate').addEventListener('click',async ()=>{
   if(persistFailed) toast('Vente enregistrée à l\'écran, mais la sauvegarde locale a échoué.');
 });
 async function getNextInvoiceNumber(){
-  let seq=1;
-  try{
-    const r=await idbGet('settings','invoiceSeq');
-    if(r && r.value) seq=r.value+1;
-  }catch(e){}
-  await safePut('settings',{key:'invoiceSeq',value:seq});
-  return 'BLC-'+String(seq).padStart(6,'0');
+  /* Numéro unique sur tous les appareils : compteur partagé via transaction cloud */
+  let localSeq=0;
+  try{ const r=await idbGet('settings','invoiceSeq'); if(r && r.value) localSeq=r.value; }catch(e){}
+  if(cloudReady && cloudDb && navigator.onLine){
+    try{
+      const ref=cloudCollection('settings').doc('invoiceSeq');
+      const seq=await Promise.race([
+        cloudDb.runTransaction(async tx=>{
+          const snap=await tx.get(ref);
+          const cur=(snap.exists && snap.data().value) || 0;
+          const n=Math.max(cur,localSeq)+1;
+          tx.set(ref,{value:n});
+          return n;
+        }),
+        new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),3500))
+      ]);
+      await idbPut('settings',{key:'invoiceSeq',value:seq}).catch(()=>{});
+      return 'BLC-'+String(seq).padStart(6,'0');
+    }catch(e){ console.warn('Compteur de facture cloud indisponible, numéro local utilisé.',e); }
+  }
+  /* Hors ligne : numéro propre à l'appareil (aucun doublon possible avec les autres caisses) */
+  let offSeq=0;
+  try{ const r=await idbGet('settings','invoiceSeqOffline'); if(r && r.value) offSeq=r.value; }catch(e){}
+  offSeq++;
+  await idbPut('settings',{key:'invoiceSeqOffline',value:offSeq}).catch(()=>{});
+  return 'BLC-'+(deviceId||'X')+'-'+String(offSeq).padStart(5,'0');
 }
 function showTicket(items,date,paiement,invoiceNo){
   const total=items.reduce((s,c)=>s+c.total,0);
@@ -1844,7 +1885,7 @@ document.getElementById('btn-valider-vente').addEventListener('click',async ()=>
       qte:c.qte,pu:c.pu,total:c.total,paiement:c.paiement,caissier:'Gérant',agence:c.agence};
     ventes.push(vente); await safePut('ventes',vente);
     const a=articles.find(x=>x.id===c.articleId);
-    if(a){a.qte-=c.qte; await safePut('articles',a);}
+    if(a){ await adjustStock(a,-c.qte); }
   }
   toast('Vente validée et stock mis à jour.');
   adminCart=[]; renderCartAdmin();
@@ -1872,9 +1913,8 @@ document.getElementById('btn-add-achat').addEventListener('click',async ()=>{
   const achat={id:uid(),date:todayStr(),code,desig,categorie:cat,qte,pv,total:qte*pv,fourn,agence:adminAgenceFilter};
   achats.push(achat); await safePut('achats',achat);
   let a=articles.find(x=>x.code===code && x.agence===adminAgenceFilter);
-  if(a){ a.qte+=qte; if(pv) a.pv=pv; }
-  else{ a={id:uid(),code,desig,categorie:cat,qte,pa:pv,pv,seuil:3,agence:adminAgenceFilter}; articles.push(a); }
-  await safePut('articles',a);
+  if(a){ if(pv) a.pv=pv; await adjustStock(a,qte); }
+  else{ a={id:uid(),code,desig,categorie:cat,qte,pa:pv,pv,seuil:3,agence:adminAgenceFilter}; articles.push(a); await safePut('articles',a); }
   ['a-code','a-desig','a-qte','a-prix','a-fourn'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('a-qte').value=1;
   renderAchatTable();
@@ -1954,6 +1994,7 @@ async function askDuplicateAllArticles(){
   if(!confirm(msg)) return;
   const copies=toCopy.map(a=>({id:uid(),code:a.code,desig:a.desig,categorie:a.categorie,agence:target,qte:0,pa:a.pa,pv:a.pv,seuil:a.seuil}));
   try{
+    copies.forEach(c=>{ c._ts=Date.now(); c._dev=deviceId; });
     await bulkPutArticles(copies);
     articles.push(...copies);
     cloudBulkPush('articles',copies);
@@ -2035,8 +2076,8 @@ document.getElementById('mvt-save').addEventListener('click', async ()=>{
     const fourn=document.getElementById('mvt-fourn').value.trim();
     const achat={id:uid(),date:todayStr(),code:a.code,desig:a.desig,categorie:a.categorie,qte,pv:prix,total:qte*prix,fourn,agence:a.agence};
     achats.push(achat); await safePut('achats',achat);
-    a.qte+=qte; if(prix) a.pv=prix;
-    await safePut('articles',a);
+    if(prix) a.pv=prix;
+    await adjustStock(a,qte);
     if(document.getElementById('achat-body')) renderAchatTable();
     toast('Achat enregistré. Stock mis à jour.');
   } else {
@@ -2046,8 +2087,7 @@ document.getElementById('mvt-save').addEventListener('click', async ()=>{
     const vente={id:uid(),date,heure,articleId:a.id,code:a.code,desig:a.desig,categorie:a.categorie,
       qte,pu:prix,total:qte*prix,paiement,caissier:'Gérant',agence:a.agence};
     ventes.push(vente); await safePut('ventes',vente);
-    a.qte-=qte;
-    await safePut('articles',a);
+    await adjustStock(a,-qte);
     if(document.getElementById('hist-body')) refreshAfterVenteChange();
     toast('Vente enregistrée. Stock mis à jour.');
   }
@@ -2087,7 +2127,7 @@ document.getElementById('modal-confirm').addEventListener('click',async ()=>{
     const v=ventes.find(x=>x.id===pendingDelete.id);
     if(v){
       const a=articles.find(x=>x.id===v.articleId);
-      if(a){ a.qte+=v.qte; await safePut('articles',a); } // recrédit du stock
+      if(a){ await adjustStock(a,v.qte); } // recrédit du stock
       ventes=ventes.filter(x=>x.id!==pendingDelete.id);
       await safeDelete('ventes',pendingDelete.id);
       refreshAfterVenteChange();
@@ -2175,8 +2215,7 @@ document.getElementById('ev-save').addEventListener('click', async ()=>{
   const deltaQte=newQte-v.qte; // >0 si on vend plus qu'avant, <0 si on vend moins
   if(a){
     if(deltaQte>0 && a.qte<deltaQte){ toast(`Stock insuffisant pour augmenter la quantité (disponible: ${a.qte}).`); return; }
-    a.qte-=deltaQte; // on retire du stock si on vend plus, on recrédite si on vend moins
-    await safePut('articles',a);
+    await adjustStock(a,-deltaQte); // on retire du stock si on vend plus, on recrédite si on vend moins
   }
 
   v.qte=newQte; v.pu=newPu; v.total=newQte*newPu; v.paiement=newPaiement;
@@ -2542,27 +2581,94 @@ async function initAssistant(){
 }
 
 /* ============================================================
-   SYNCHRONISATION MULTI-APPAREILS (Firebase Firestore, gratuit)
-   Partage stock/ventes/achats/versements/gérants/ouvertures entre
-   tous les appareils utilisant le même "code boutique".
+   SYNCHRONISATION MULTI-APPAREILS — v2 (Firebase Firestore)
+   Tous les appareils ayant le même "code boutique" partagent
+   stock, ventes, achats, versements, gérants, ouvertures et objectif.
+   Principes :
+   - le cloud fait foi ; écoute temps réel (onSnapshot) sur chaque collection
+   - stock modifié par DELTA atomique (increment) : plus d'écrasement entre appareils
+   - suppressions propagées par "pierres tombales" (_deleted)
+   - fusion initiale par horodatage (_ts) : rien n'est perdu au premier branchement
+   - n° de facture unique via transaction cloud
    ============================================================ */
 const SYNC_STORES=['articles','ventes','achats','versements','gerants','ouvertures'];
+const SYNC_ALL=SYNC_STORES.concat(['settings']);
 let cloudDb=null, cloudBoutique='', cloudReady=false, cloudUnsubs=[], cloudConnecting=false;
+let cloudFirstDone={}, cloudFirstWaiters=[], cloudChain={}, cloudPending=0, cloudErrorState='', cloudGen=0;
+let cloudLastSyncTs=0, cloudLastSyncAtConnect=0, cloudSettingsApplied=false, cloudWatchdog=null;
+let deviceId='';
+let _refreshT=null, _lsT=null;
 
 function setSyncStatus(state,msg){
   document.querySelectorAll('.sync-dot').forEach(d=>{ d.className='sync-dot '+state; });
   document.querySelectorAll('.sync-label').forEach(l=>{ l.textContent=msg; });
 }
+function getLocalList(store){
+  switch(store){
+    case 'articles': return articles; case 'ventes': return ventes; case 'achats': return achats;
+    case 'versements': return versements; case 'gerants': return gerants; case 'ouvertures': return ouvertures;
+  }
+  return [];
+}
+function setLocalList(store,list){
+  switch(store){
+    case 'articles': articles=list; break; case 'ventes': ventes=list; break; case 'achats': achats=list; break;
+    case 'versements': versements=list; break; case 'gerants': gerants=list; break; case 'ouvertures': ouvertures=list; break;
+  }
+}
+function cloudAllFirst(){ return SYNC_ALL.every(s=>cloudFirstDone[s]); }
+function syncStatusAuto(){
+  if(!cloudReady) return;
+  if(!navigator.onLine){ setSyncStatus('off','Hors ligne'+(cloudPending?' ('+cloudPending+' en attente)':'')); return; }
+  if(cloudErrorState){ setSyncStatus('error',cloudErrorState); return; }
+  if(!cloudAllFirst()){ setSyncStatus('syncing','Synchronisation…'); return; }
+  if(cloudPending>0) setSyncStatus('syncing','Envoi…'); else setSyncStatus('ok','Synchronisé');
+}
+function cloudError(e,label){
+  console.warn('cloud',label,e);
+  const code=(e&&e.code)||'';
+  if(code==='permission-denied'){
+    cloudErrorState='Accès refusé (règles Firestore)';
+    syncStatusAuto();
+    toast("Synchro refusée par Firebase : vérifiez les règles Firestore (lecture/écriture sur boutiques).");
+  } else if(code==='unavailable' || code==='deadline-exceeded'){
+    syncStatusAuto(); /* réseau coupé : Firestore réessaie tout seul */
+  } else {
+    cloudErrorState='Erreur synchro';
+    syncStatusAuto();
+  }
+}
+function cloudWrite(fn,label){
+  cloudPending++; syncStatusAuto();
+  let p; try{ p=Promise.resolve(fn()); }catch(e){ p=Promise.reject(e); }
+  return p.then(()=>{ cloudPending=Math.max(0,cloudPending-1); if(cloudErrorState==='Erreur synchro') cloudErrorState=''; syncStatusAuto(); },
+                e=>{ cloudPending=Math.max(0,cloudPending-1); cloudError(e,label); });
+}
+function scheduleRefresh(){ clearTimeout(_refreshT); _refreshT=setTimeout(refreshCurrentAdminView,200); }
+function refreshCurrentAdminView(){
+  try{
+    if(document.getElementById('appmenu') && typeof currentAdminView!=='undefined' && currentAdminView){
+      renderActiveAdminView(currentAdminView);
+    }
+    if(document.getElementById('pos-search')) renderPosGrid();
+  }catch(e){ console.warn('refresh', e); }
+}
 
 function loadFirebaseSdk(){
-  if(window.firebase && window.firebase.firestore) return Promise.resolve();
+  if(window.firebase && window.firebase.firestore && window.firebase.auth) return Promise.resolve();
   return new Promise((resolve,reject)=>{
     const s1=document.createElement('script');
     s1.src='https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js';
     s1.onload=()=>{
       const s2=document.createElement('script');
       s2.src='https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js';
-      s2.onload=()=>resolve();
+      s2.onload=()=>{
+        const s3=document.createElement('script');
+        s3.src='https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js';
+        s3.onload=()=>resolve();
+        s3.onerror=()=>reject(new Error('auth sdk load failed'));
+        document.head.appendChild(s3);
+      };
       s2.onerror=()=>reject(new Error('firestore sdk load failed'));
       document.head.appendChild(s2);
     };
@@ -2570,133 +2676,270 @@ function loadFirebaseSdk(){
     document.head.appendChild(s1);
   });
 }
-
 function cloudCollection(store){
   return cloudDb.collection('boutiques').doc(cloudBoutique).collection(store);
 }
 
-/* Poussée d'un seul document (appelée automatiquement par safePut) */
-function cloudPushOne(store,val){
+/* ---- Écritures vers le cloud ---- */
+function cloudPushOne(store,val,opts){
   if(!cloudReady || !SYNC_STORES.includes(store) || !val || val.id==null) return;
-  cloudCollection(store).doc(String(val.id)).set(val).catch(e=>console.warn('cloud push échoué',store,e));
+  const ref=cloudCollection(store).doc(String(val.id));
+  const payload=Object.assign({},val); delete payload._seed;
+  if(store==='articles' && opts && typeof opts.qteDelta==='number'){
+    /* delta atomique : plusieurs appareils peuvent vendre en même temps sans écraser le stock */
+    payload.qte=window.firebase.firestore.FieldValue.increment(opts.qteDelta);
+    payload._deleted=false;
+    cloudWrite(()=>ref.set(payload,{merge:true}),store);
+  } else {
+    cloudWrite(()=>ref.set(payload),store);
+  }
 }
-/* Suppression d'un seul document (appelée automatiquement par safeDelete) */
+function cloudPushSetting(val){
+  if(!cloudReady || !val || !val.key) return;
+  cloudWrite(()=>cloudCollection('settings').doc(String(val.key)).set({key:val.key,value:val.value,_ts:val._ts||Date.now(),_dev:deviceId}),'settings');
+}
+/* Suppression = pierre tombale (sinon un appareil resté hors ligne ressusciterait l'élément) */
 function cloudDeleteOne(store,id){
   if(!cloudReady || !SYNC_STORES.includes(store) || id==null) return;
-  cloudCollection(store).doc(String(id)).delete().catch(e=>console.warn('cloud delete échoué',store,e));
+  cloudWrite(()=>cloudCollection(store).doc(String(id)).set({id:id,_deleted:true,_ts:Date.now(),_dev:deviceId}),store);
 }
-/* Poussée en masse (par lots de 450, limite Firestore = 500 par batch) */
 async function cloudBulkPush(store,items){
   if(!cloudReady || !SYNC_STORES.includes(store) || !items.length) return;
   const col=cloudCollection(store);
-  for(let i=0;i<items.length;i+=450){
-    const chunk=items.slice(i,i+450);
+  for(let i=0;i<items.length;i+=400){
+    const chunk=items.slice(i,i+400);
     const batch=cloudDb.batch();
-    chunk.forEach(it=>batch.set(col.doc(String(it.id)),it));
-    try{ await batch.commit(); }catch(e){ console.warn('cloud bulk push échoué',store,e); }
+    chunk.forEach(it=>{ const p=Object.assign({},it); delete p._seed; batch.set(col.doc(String(it.id)),p); });
+    await cloudWrite(()=>batch.commit(),store+' (lot)');
   }
 }
 
-async function pullAllFromCloud(){
-  for(const store of SYNC_STORES){
-    try{
-      const snap=await cloudCollection(store).get();
-      const remoteItems=[]; snap.forEach(doc=>remoteItems.push(doc.data()));
-      if(remoteItems.length) await bulkPutGeneric(store,remoteItems);
-    }catch(e){ console.warn('pull échoué',store,e); }
+/* Mouvement de stock par delta (vente, achat, annulation…) */
+async function adjustStock(a,delta){
+  a.qte=(a.qte||0)+delta;
+  return safePut('articles',a,{qteDelta:delta});
+}
+
+/* ---- Réception temps réel ---- */
+function touchLastSync(){
+  clearTimeout(_lsT);
+  _lsT=setTimeout(()=>{
+    if(!cloudReady || !cloudBoutique) return;
+    cloudLastSyncTs=Date.now();
+    idbPut('settings',{key:'cloudLastSync:'+cloudBoutique,value:cloudLastSyncTs}).catch(()=>{});
+  },1500);
+}
+function checkAllFirstDone(){
+  if(!cloudAllFirst()) return;
+  clearTimeout(cloudWatchdog);
+  cloudFirstWaiters.splice(0).forEach(r=>r());
+  touchLastSync(); syncStatusAuto(); scheduleRefresh();
+}
+async function handleSettingsSnapshot(snap,fromServer){
+  const first=fromServer && !cloudFirstDone.settings;
+  if(!cloudFirstDone.settings && !fromServer) return;
+  let changed=false;
+  for(const ch of snap.docChanges()){
+    if(ch.doc.metadata.hasPendingWrites) continue;
+    const d=ch.doc.data();
+    if(d && d.key==='objectifMensuel' && typeof d.value==='number'){
+      if(first){
+        const loc=await idbGet('settings','objectifMensuel');
+        if(loc && (loc._ts||0)>(d._ts||0)){ cloudPushSetting(loc); continue; }
+      }
+      objectifMensuel=d.value;
+      await idbPut('settings',{key:'objectifMensuel',value:d.value,_ts:d._ts||0}).catch(()=>{});
+      changed=true;
+    }
   }
-  articles=await idbGetAll('articles');
-  ventes=await idbGetAll('ventes');
-  achats=await idbGetAll('achats');
-  versements=await idbGetAll('versements');
-  gerants=await idbGetAll('gerants');
-  ouvertures=await idbGetAll('ouvertures');
-}
-
-async function pushAllLocalToCloud(){
-  const arrays={articles,ventes,achats,versements,gerants,ouvertures};
-  for(const store of SYNC_STORES){ await cloudBulkPush(store,arrays[store]||[]); }
-}
-
-function refreshCurrentAdminView(){
-  if(document.getElementById('appmenu') && typeof currentAdminView!=='undefined' && currentAdminView){
-    renderActiveAdminView(currentAdminView);
+  if(first){
+    if(!snap.docs.some(x=>x.id==='objectifMensuel')){
+      const loc=await idbGet('settings','objectifMensuel');
+      if(loc && loc.value) cloudPushSetting(loc);
+    }
+    cloudFirstDone.settings=true; checkAllFirstDone();
   }
-  if(document.getElementById('pos-search')) renderPosGrid();
+  if(changed) scheduleRefresh();
 }
+async function handleCloudSnapshot(store,snap){
+  const fromServer=!snap.metadata.fromCache;
+  if(fromServer && cloudErrorState==='Erreur synchro') cloudErrorState='';
+  if(store==='settings') return handleSettingsSnapshot(snap,fromServer);
+  /* tant que le serveur n'a pas répondu, on ignore le cache (potentiellement ancien) */
+  if(!cloudFirstDone[store] && !fromServer) return;
+  const initial=fromServer && !cloudFirstDone[store];
+  const local=getLocalList(store);
+  const localMap=new Map(local.map(x=>[String(x.id),x]));
+  const toPut=[], toDel=[], toPush=[];
 
+  snap.docChanges().forEach(ch=>{
+    if(ch.doc.metadata.hasPendingWrites) return;          /* écho de notre propre écriture */
+    const id=String(ch.doc.id), data=ch.doc.data(), loc=localMap.get(id);
+    if(ch.type==='removed' || data._deleted===true){
+      if(loc){
+        if(initial && data._deleted===true && (loc._ts||0)>(data._ts||0)) toPush.push(loc); /* recréé après suppression */
+        else toDel.push(loc.id);
+      }
+      return;
+    }
+    if(data.id==null) data.id=id;
+    if(loc && initial && (loc._ts||0)>(data._ts||0)){ toPush.push(loc); return; }        /* version locale plus récente */
+    toPut.push(data);
+  });
+
+  if(initial){
+    const remoteIds=new Set(snap.docs.map(d=>String(d.id)));
+    const remoteHasData=snap.docs.some(d=>d.data()._deleted!==true);
+    const only=local.filter(x=>!remoteIds.has(String(x.id)));
+    const gone=[];
+    only.forEach(x=>{
+      if(x._seed && !x._ts && remoteHasData){ toDel.push(x.id); return; }                 /* données de démarrage : le cloud fait foi */
+      if(cloudLastSyncAtConnect>0 && remoteHasData && (x._ts||0)<=cloudLastSyncAtConnect){ gone.push(x); return; } /* supprimé ailleurs */
+      toPush.push(x);                                                                      /* créé ici hors ligne / jamais envoyé */
+    });
+    /* garde-fou : si "supprimé ailleurs" concerne trop d'éléments, on préfère renvoyer qu'effacer */
+    if(gone.length>20 && gone.length>local.length*0.5) gone.forEach(x=>toPush.push(x));
+    else gone.forEach(x=>toDel.push(x.id));
+  }
+
+  if(toPut.length) await bulkPutGeneric(store,toPut).catch(e=>console.warn('bulk put',store,e));
+  for(const id of toDel){ await idbDelete(store,id).catch(()=>{}); }
+  if(toPut.length || toDel.length){
+    setLocalList(store, await idbGetAll(store));
+    scheduleRefresh();
+  }
+  if(toPush.length) cloudBulkPush(store,toPush);
+  if(initial){ cloudFirstDone[store]=true; checkAllFirstDone(); }
+  if(fromServer && !snap.metadata.hasPendingWrites) touchLastSync();
+}
 function attachCloudListeners(){
   detachCloudListeners();
-  SYNC_STORES.forEach(store=>{
-    const unsub=cloudCollection(store).onSnapshot(snapshot=>{
-      let changed=false;
-      snapshot.docChanges().forEach(change=>{
-        changed=true;
-        const data=change.doc.data();
-        if(change.type==='removed'){
-          idbDelete(store,data.id).catch(()=>{});
-        } else {
-          idbPut(store,data).catch(()=>{});
-        }
+  const gen=++cloudGen;
+  SYNC_ALL.forEach(store=>{
+    const unsub=cloudCollection(store).onSnapshot({includeMetadataChanges:true},
+      snap=>{
+        if(gen!==cloudGen) return;
+        cloudChain[store]=(cloudChain[store]||Promise.resolve())
+          .then(()=>handleCloudSnapshot(store,snap))
+          .catch(e=>console.warn('snapshot',store,e));
+      },
+      err=>{
+        if(gen!==cloudGen) return;
+        if(store==='settings'){ console.warn('listener settings',err); cloudFirstDone.settings=true; checkAllFirstDone(); }
+        else cloudError(err,'listener '+store);
       });
-      if(changed){
-        idbGetAll(store).then(list=>{
-          if(store==='articles') articles=list;
-          else if(store==='ventes') ventes=list;
-          else if(store==='achats') achats=list;
-          else if(store==='versements') versements=list;
-          else if(store==='gerants') gerants=list;
-          else if(store==='ouvertures') ouvertures=list;
-          refreshCurrentAdminView();
-        });
-      }
-    }, e=>console.warn('listener échoué',store,e));
     cloudUnsubs.push(unsub);
   });
 }
 function detachCloudListeners(){
+  cloudGen++;
   cloudUnsubs.forEach(u=>{ try{ u(); }catch(e){} });
   cloudUnsubs=[];
 }
 
+/* ---- Connexion ---- */
+let cloudAuthUnsub=null;
+function authMessage(e){
+  const c=(e&&e.code)||'';
+  if(c==='auth/invalid-credential'||c==='auth/wrong-password'||c==='auth/user-not-found'||c==='auth/invalid-email') return 'E-mail ou mot de passe incorrect.';
+  if(c==='auth/operation-not-allowed'||c==='auth/configuration-not-found') return "Activez E-mail/Mot de passe dans Firebase → Authentication.";
+  if(c==='auth/network-request-failed') return 'Réseau indisponible : connexion impossible.';
+  if(c==='auth/too-many-requests') return 'Trop de tentatives : réessayez dans quelques minutes.';
+  if(c==='auth/user-disabled') return 'Ce compte est désactivé.';
+  return 'Connexion Firebase refusée ('+(c||'erreur')+').';
+}
+/* Connecte l'appareil : avec e-mail+mot de passe (1re fois) ou en restaurant la session déjà ouverte */
+async function cloudAuthenticate(cfg){
+  const auth=window.firebase.auth();
+  if(cfg.email && cfg.password){
+    await auth.signInWithEmailAndPassword(cfg.email,cfg.password);
+  } else if(!auth.currentUser){
+    await new Promise(res=>{ const u=auth.onAuthStateChanged(()=>{ u(); res(); }); });
+  }
+  return auth.currentUser;
+}
+function watchAuthState(){
+  if(cloudAuthUnsub){ try{ cloudAuthUnsub(); }catch(e){} cloudAuthUnsub=null; }
+  cloudAuthUnsub=window.firebase.auth().onAuthStateChanged(u=>{
+    if(!u && cloudReady){
+      cloudReady=false; detachCloudListeners();
+      setSyncStatus('error','Session expirée');
+      toast('Session de synchro fermée : reconnectez-vous (bouton Synchro).');
+    }
+  });
+}
+function cleanBoutiqueCode(s){ return String(s||'').trim().replace(/\//g,'-'); }
 async function connectCloudSync(cfg,{silent=false}={}){
+  if(cloudConnecting) return;
+  cloudConnecting=true;
   setSyncStatus('syncing','Connexion…');
   try{
     await loadFirebaseSdk();
-    if(!window.firebase.apps || !window.firebase.apps.length){ window.firebase.initializeApp(cfg); }
+    const fbCfg={apiKey:cfg.apiKey,authDomain:cfg.authDomain,projectId:cfg.projectId,
+                 storageBucket:cfg.storageBucket,messagingSenderId:cfg.messagingSenderId,appId:cfg.appId};
+    if(!window.firebase.apps || !window.firebase.apps.length){ window.firebase.initializeApp(fbCfg); cloudSettingsApplied=false; }
+    const user=await cloudAuthenticate(cfg);
+    if(!user){
+      cloudReady=false;
+      setSyncStatus('error','Connexion requise');
+      toast('Synchro : connectez-vous (bouton Synchro → e-mail et mot de passe).');
+      return;
+    }
+    watchAuthState();
     cloudDb=window.firebase.firestore();
-    try{ await cloudDb.enablePersistence({synchronizeTabs:true}); }catch(e){ /* déjà actif ou plusieurs onglets : ok */ }
-    cloudBoutique=cfg.codeBoutique;
-    await pullAllFromCloud();
-    await pushAllLocalToCloud();
-    attachCloudListeners();
+    if(!cloudSettingsApplied){
+      cloudSettingsApplied=true;
+      try{ cloudDb.settings({ignoreUndefinedProperties:true, experimentalAutoDetectLongPolling:true}); }catch(e){ console.warn('settings',e); }
+      try{ await cloudDb.enablePersistence({synchronizeTabs:true}); }catch(e){ /* déjà actif / navigateur non compatible : ok */ }
+    }
+    cloudBoutique=cleanBoutiqueCode(cfg.codeBoutique);
+    cloudErrorState=''; cloudPending=0; cloudFirstDone={};
+    try{ const r=await idbGet('settings','cloudLastSync:'+cloudBoutique); cloudLastSyncTs=(r&&r.value)||0; }catch(e){ cloudLastSyncTs=0; }
+    cloudLastSyncAtConnect=cloudLastSyncTs;
     cloudReady=true;
-    setSyncStatus('ok','Synchronisé');
-    refreshCurrentAdminView();
-    if(!silent) toast('Synchronisation activée : vos appareils sont maintenant reliés.');
+    attachCloudListeners();
+    clearTimeout(cloudWatchdog);
+    cloudWatchdog=setTimeout(()=>{ if(cloudReady && !cloudAllFirst() && !cloudErrorState) setSyncStatus('off',navigator.onLine?'Connexion lente…':'Hors ligne'); },20000);
+    if(!silent){
+      await Promise.race([ new Promise(r=>cloudFirstWaiters.push(r)), new Promise(r=>setTimeout(r,25000)) ]);
+    }
+    syncStatusAuto();
+    if(!silent) toast(cloudAllFirst() ? 'Synchronisation activée : vos appareils sont reliés.' : 'Connecté — synchronisation en cours…');
   }catch(e){
-    cloudReady=false;
+    cloudReady=false; detachCloudListeners();
     setSyncStatus('error','Erreur de connexion');
-    if(!silent) toast("Connexion impossible. Vérifiez le code boutique et les informations Firebase.");
+    if(e && e.code && String(e.code).indexOf('auth/')===0) toast(authMessage(e));
+    else if(!silent) toast("Connexion impossible. Vérifiez le code boutique et les informations Firebase.");
     console.warn('Cloud sync error',e);
-  }
+  }finally{ cloudConnecting=false; }
 }
-
+async function resyncNow(){
+  if(!cloudReady) return;
+  cloudFirstDone={}; cloudLastSyncAtConnect=cloudLastSyncTs; cloudErrorState='';
+  attachCloudListeners();
+  syncStatusAuto();
+  await Promise.race([ new Promise(r=>cloudFirstWaiters.push(r)), new Promise(r=>setTimeout(r,25000)) ]);
+  syncStatusAuto();
+}
 async function disconnectCloudSync(){
   detachCloudListeners();
-  cloudReady=false; cloudDb=null; cloudBoutique='';
-  await safePut('settings',{key:'cloudConfig',value:null});
+  cloudReady=false; cloudBoutique=''; cloudFirstDone={}; cloudPending=0; cloudErrorState='';
+  if(cloudAuthUnsub){ try{ cloudAuthUnsub(); }catch(e){} cloudAuthUnsub=null; }
+  try{ if(window.firebase && window.firebase.apps && window.firebase.apps.length){ await window.firebase.auth().signOut(); } }catch(e){}
+  try{ if(window.firebase && window.firebase.apps && window.firebase.apps.length){ await window.firebase.app().delete(); } }catch(e){}
+  cloudDb=null; cloudSettingsApplied=false;
+  await idbPut('settings',{key:'cloudConfig',value:null}).catch(()=>{});
   setSyncStatus('off','Non connecté');
   toast('Synchronisation désactivée sur cet appareil.');
 }
 
+/* ---- Interface ---- */
 function updateSyncModalUi(connected){
   document.getElementById('sync-form-fields').style.display = connected ? 'none' : '';
   document.getElementById('sync-connect').style.display = connected ? 'none' : '';
   document.getElementById('sync-now').style.display = connected ? '' : 'none';
   document.getElementById('sync-disconnect').style.display = connected ? '' : 'none';
 }
-
 async function openSyncModal(){
   document.getElementById('sync-bg').classList.add('show');
   updateSyncModalUi(cloudReady);
@@ -2705,6 +2948,7 @@ async function openSyncModal(){
     const cfg=(r&&r.value)||null;
     if(cfg){
       document.getElementById('sync-boutique').value=cfg.codeBoutique||'';
+      document.getElementById('sync-email').value=cfg.email||'';
       document.getElementById('sync-apiKey').value=cfg.apiKey||'';
       document.getElementById('sync-authDomain').value=cfg.authDomain||'';
       document.getElementById('sync-projectId').value=cfg.projectId||'';
@@ -2723,7 +2967,8 @@ document.getElementById('sync-cancel').addEventListener('click',()=>{
 });
 document.getElementById('sync-connect').addEventListener('click', async ()=>{
   const cfg={
-    codeBoutique:document.getElementById('sync-boutique').value.trim(),
+    codeBoutique:cleanBoutiqueCode(document.getElementById('sync-boutique').value),
+    email:document.getElementById('sync-email').value.trim(),
     apiKey:document.getElementById('sync-apiKey').value.trim(),
     authDomain:document.getElementById('sync-authDomain').value.trim(),
     projectId:document.getElementById('sync-projectId').value.trim(),
@@ -2735,33 +2980,50 @@ document.getElementById('sync-connect').addEventListener('click', async ()=>{
     toast('Merci de remplir au minimum le code boutique, apiKey, projectId et appId.');
     return;
   }
-  await safePut('settings',{key:'cloudConfig',value:cfg});
-  await connectCloudSync(cfg);
+  const password=document.getElementById('sync-password').value;
+  if(!cfg.email || !password){ toast('Renseignez l\'e-mail et le mot de passe du compte synchro.'); return; }
+  const saved=Object.assign({},cfg); /* le mot de passe n'est jamais enregistré */
+  await idbPut('settings',{key:'cloudConfig',value:saved}).catch(()=>{});
+  await connectCloudSync(Object.assign({},cfg,{password}));
+  document.getElementById('sync-password').value='';
   updateSyncModalUi(cloudReady);
 });
 document.getElementById('sync-now').addEventListener('click', async ()=>{
   if(!cloudReady){ toast('Non connecté.'); return; }
   setSyncStatus('syncing','Synchronisation…');
-  await pullAllFromCloud();
-  await pushAllLocalToCloud();
+  try{ await cloudDb.enableNetwork(); }catch(e){}
+  await resyncNow();
   refreshCurrentAdminView();
-  setSyncStatus('ok','Synchronisé');
-  toast('Synchronisation manuelle terminée.');
+  toast(cloudAllFirst() ? 'Synchronisation manuelle terminée.' : 'Réseau lent : la synchronisation continue en arrière-plan.');
 });
 document.getElementById('sync-disconnect').addEventListener('click', async ()=>{
   await disconnectCloudSync();
   updateSyncModalUi(false);
 });
 
-/* Reconnexion automatique et silencieuse au démarrage si déjà configuré */
+/* ---- Réseau : reprise automatique ---- */
+window.addEventListener('online',()=>{
+  if(!cloudReady) return;
+  try{ cloudDb.enableNetwork(); }catch(e){}
+  syncStatusAuto();
+  toast('Connexion rétablie : synchronisation…');
+});
+window.addEventListener('offline',()=>{ if(cloudReady) syncStatusAuto(); });
+document.addEventListener('visibilitychange',()=>{
+  if(!document.hidden && cloudReady && navigator.onLine){ try{ cloudDb.enableNetwork(); }catch(e){} }
+});
+
+/* Reconnexion automatique au démarrage : on ATTEND la fin de init() (la base locale doit être ouverte) */
 (async function autoConnectCloudSync(){
   try{
+    await initPromise;
     const r=await idbGet('settings','cloudConfig');
     const cfg=(r&&r.value)||null;
     if(cfg && cfg.codeBoutique){ await connectCloudSync(cfg,{silent:true}); }
     else { setSyncStatus('off','Non connecté'); }
-  }catch(e){ setSyncStatus('off','Non connecté'); }
+  }catch(e){ console.warn('autoConnect',e); setSyncStatus('off','Non connecté'); }
 })();
+
 </script>
 </body>
 </html>
